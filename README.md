@@ -1,5 +1,7 @@
 # Job Tracker
 
+Test git
+
 Suivi de recherche d'emploi en une seule page web : pipeline kanban, relances, réseau, objectifs hebdomadaires.
 
 Aucune installation, aucun serveur, aucun compte. Les données ne quittent pas ton ordinateur (ou ton dossier cloud).
