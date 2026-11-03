@@ -1,10 +1,24 @@
 # Job Tracker
 
-Test git
-
 Suivi de recherche d'emploi en une seule page web : pipeline kanban, relances, réseau, objectifs hebdomadaires.
 
 Aucune installation, aucun serveur, aucun compte. Les données ne quittent pas ton ordinateur (ou ton dossier cloud).
+
+## Lancer l'appli
+
+Le code vit sur GitHub, les données vivent dans ton dossier OneDrive : ce sont deux choses séparées.
+
+- **Sur n'importe quel ordinateur** : `git clone https://github.com/awyplosz/Job_tracker.git`, puis double-clic sur `index.html`.
+- **Ou sans rien cloner** : active GitHub Pages (dépôt → Settings → Pages → Branch `main` / `(root)`), puis ouvre `https://awyplosz.github.io/Job_tracker/`.
+- Mettre le code à jour sur un autre ordinateur : `git pull`.
+
+## Synchroniser les données entre ordinateurs
+
+1. Premier ordinateur : **Données → Créer un fichier de données…**, enregistre `jobtracker-data.json` dans un dossier OneDrive **hors du dépôt Git** (par exemple `Documents/Job/data/`).
+2. Autre ordinateur : attends que OneDrive ait synchronisé, ouvre l'appli, **Données → Ouvrir un fichier de données…** et choisis le même fichier.
+3. Ne modifie pas le même fichier sur deux ordinateurs en même temps : OneDrive créerait une copie « en conflit » et il faudrait choisir laquelle garder.
+
+Les données ne passent jamais par GitHub (`*.json` est ignoré par `.gitignore`).
 
 ## Utilisation avec Chrome ou Edge (sauvegarde automatique)
 
