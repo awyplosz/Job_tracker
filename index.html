@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Tracker</title>
+<style>
+/* ============ 1. THÈME (couleurs, clair / sombre) ============ */
+:root{
+  --bg:#f5f6fa; --surface:#ffffff; --surface2:#eef0f5; --text:#1b2232; --muted:#6b7385; --border:#e2e5ed;
+  --accent:#4f46e5; --accent-soft:#eceeff; --danger:#dc2626; --danger-soft:#fdecec;
+  --warn:#b45309; --warn-soft:#fff3e0; --ok:#047857; --ok-soft:#e5f6ef;
+  --shadow:0 1px 2px rgba(16,24,40,.05),0 4px 14px rgba(16,24,40,.06); --radius:14px;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0e1118; --surface:#161a24; --surface2:#1e2330; --text:#e7eaf2; --muted:#98a1b3; --border:#2a3040;
+  --accent:#818cf8; --accent-soft:#252a47; --danger:#f87171; --danger-soft:#3a1d22;
+  --warn:#fbbf24; --warn-soft:#3a2e15; --ok:#34d399; --ok-soft:#14322a; --shadow:0 1px 2px rgba(0,0,0,.35);
+}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.4}
+button{font:inherit}
+.hidden{display:none!important}
+.muted{color:var(--muted)} .small{font-size:12px} .spacer{flex:1} .grow{flex:1;min-width:0}
+
+/* ============ 2. EN-TÊTE ============ */
+.top{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 20px;
+  background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
+.brand{display:flex;align-items:center;gap:10px}
+.logo{width:36px;height:36px;border-radius:11px;background:linear-gradient(135deg,var(--accent),#ec4899);color:#fff;display:grid;place-items:center;font-weight:700;letter-spacing:-.5px}
+h1{font-size:16px;margin:0}
+.tabs{display:flex;gap:3px;background:var(--surface2);padding:4px;border-radius:11px;overflow-x:auto}
+.tabs button{border:0;background:transparent;color:var(--muted);padding:7px 13px;border-radius:8px;cursor:pointer;font-weight:500;white-space:nowrap}
+.tabs button.active{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.actions{margin-left:auto;display:flex;gap:8px;align-items:center;position:relative}
+.btn{border:1px solid var(--border);background:var(--surface);color:var(--text);padding:8px 14px;border-radius:9px;font-weight:500;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.small{padding:4px 10px;font-size:12px;border-radius:7px}
+.btn.danger{color:var(--danger)}
+.icon{border:0;background:none;font-size:24px;line-height:1;color:var(--muted);cursor:pointer;padding:0 4px}
+.storage{font-size:12px;padding:5px 11px;border-radius:999px;cursor:pointer;white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.storage.ok{background:var(--ok-soft);color:var(--ok)} .storage.warn{background:var(--warn-soft);color:var(--warn)} .storage.err{background:var(--danger-soft);color:var(--danger)}
+.menu{position:absolute;right:0;top:46px;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.15);padding:6px;width:300px;z-index:20}
+.menu button{display:block;width:100%;text-align:left;border:0;background:none;padding:9px 10px;border-radius:8px;color:var(--text);cursor:pointer}
+.menu button:hover{background:var(--surface2)}
+.menu button.danger{color:var(--danger)}
+.menu hr{border:0;border-top:1px solid var(--border);margin:6px 0}
+.menu .hint{font-size:11px;color:var(--muted);padding:4px 10px 6px}
+
+/* ============ 3. MISE EN PAGE & PANNEAUX ============ */
+main{padding:20px;max-width:1500px;margin:0 auto}
+.grid{display:grid;gap:16px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
+.panel h3{margin:0 0 12px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.goals{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.kpis{grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-top:16px}
+.dash2{grid-template-columns:1.3fr 1fr;margin-top:16px;align-items:start}
+@media(max-width:900px){.dash2{grid-template-columns:1fr}}
+.kpi .v{font-size:30px;font-weight:700;letter-spacing:-.5px}
+.kpi .l{color:var(--muted);font-size:12px}
+.goal-top{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}
+.goal-top .v{font-size:30px;font-weight:700}
+.goal-top input{width:52px;font:inherit;padding:3px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)}
+.progress{height:10px;background:var(--surface2);border-radius:999px;overflow:hidden}
+.progress>div{height:100%;background:linear-gradient(90deg,var(--accent),#a855f7);border-radius:999px;transition:width .4s}
+.progress.done>div{background:var(--ok)}
+
+/* ============ 4. BADGES, LISTE "À FAIRE", ENTONNOIR ============ */
+.badge{font-size:11px;padding:3px 8px;border-radius:999px;font-weight:600;white-space:nowrap}
+.b-late{background:var(--danger-soft);color:var(--danger)} .b-today{background:var(--warn-soft);color:var(--warn)} .b-soon{background:var(--accent-soft);color:var(--accent)}
+.chip{font-size:11px;padding:2px 8px;border-radius:6px;font-weight:500;white-space:nowrap}
+.pill{font-size:12px;padding:3px 9px;border-radius:999px;font-weight:600;color:#fff;white-space:nowrap}
+.todo{display:flex;gap:12px;align-items:center;padding:10px;border-radius:10px;cursor:pointer}
+.todo:hover{background:var(--surface2)}
+.todo .t{font-weight:500}
+.funnel-row{display:grid;grid-template-columns:105px 1fr 30px;align-items:center;gap:10px;margin:7px 0;font-size:13px}
+.funnel-bar{height:16px;background:var(--surface2);border-radius:5px;overflow:hidden}
+.funnel-bar>div{height:100%;border-radius:5px;min-width:2px}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--border)}
+td{padding:10px;border-bottom:1px solid var(--border);vertical-align:middle}
+tbody tr{cursor:pointer} tbody tr:hover{background:var(--surface2)}
+.tablewrap{overflow-x:auto;padding:4px}
+
+/* ============ 5. KANBAN ============ */
+.board{display:flex;gap:12px;overflow-x:auto;padding-bottom:16px;align-items:flex-start}
+.col{flex:0 0 255px;background:var(--surface2);border-radius:var(--radius);padding:10px;min-height:240px;outline:2px dashed transparent;transition:outline-color .15s}
+.col.over{outline-color:var(--accent)}
+.col-head{display:flex;align-items:center;gap:8px;font-weight:600;padding:4px 4px 10px}
+.count{margin-left:auto;color:var(--muted);font-weight:500;font-size:12px;background:var(--surface);padding:1px 8px;border-radius:999px}
+.dot{width:9px;height:9px;border-radius:50%;flex:none}
+.col-empty{color:var(--muted);font-size:12px;text-align:center;padding:24px 8px;border:1px dashed var(--border);border-radius:10px}
+.card{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--c);border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:grab;box-shadow:var(--shadow);transition:transform .1s}
+.card:hover{transform:translateY(-1px)}
+.card.dragging{opacity:.35}
+.card .co{font-weight:600}
+.card .ro{color:var(--muted);font-size:13px;margin:2px 0 8px}
+.card .meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.card .na{font-size:12px;margin-top:6px;color:var(--muted)}
+
+/* ============ 6. CONTACTS ============ */
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+.toolbar input,.toolbar select{font:inherit;padding:8px 11px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text)}
+.toolbar input{flex:1;min-width:200px}
+.cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
+.ccard{cursor:pointer;display:flex;flex-direction:column;gap:10px}
+.ccard:hover{border-color:var(--accent)}
+.ch{display:flex;gap:10px;align-items:center}
+.cn{font-weight:600}
+.cf{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.avatar{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;color:#fff;flex:none}
+
+/* ============ 7. FENÊTRE MODALE & FORMULAIRES ============ */
+.modal-bg{position:fixed;inset:0;background:rgba(10,12,20,.5);display:grid;place-items:center;z-index:50;padding:16px}
+.modal{background:var(--surface);border-radius:18px;width:min(680px,100%);max-height:92vh;overflow:auto;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,.3)}
+.m-head{display:flex;align-items:center;margin-bottom:16px} .m-head h2{margin:0;font-size:18px;flex:1}
+.m-foot{display:flex;gap:8px;margin-top:20px;align-items:center}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.full{grid-column:1/-1}
+@media(max-width:600px){.g2{grid-template-columns:1fr}}
+.f{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted);font-weight:500}
+.f input,.f select,.f textarea{font:inherit;font-size:14px;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:9px 11px}
+.f input:focus,.f select:focus,.f textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+.check{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text)}
+.linked{margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
+.linked-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.lk{display:flex;gap:10px;align-items:center;padding:8px;border-radius:9px;cursor:pointer}
+.lk:hover{background:var(--surface2)}
+
+/* ============ 8. DIVERS ============ */
+.empty{text-align:center;padding:56px 20px;max-width:560px;margin:30px auto}
+.empty .big{font-size:44px} .empty h2{margin:8px 0}
+.row-c{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:18px 0}
+.toast{position:fixed;bottom:22px;left:50%;transform:translate(-50%,120px);background:var(--text);color:var(--bg);padding:10px 18px;border-radius:11px;transition:transform .25s;z-index:60;font-weight:500;box-shadow:var(--shadow)}
+.toast.show{transform:translate(-50%,0)}
+@media(max-width:700px){main{padding:12px}.top{padding:10px 12px}.actions{margin-left:0;width:100%}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <div class="logo">JT</div>
+    <div><h1>Job Tracker</h1><div class="muted small" id="weekLabel"></div></div>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button data-view="dash">Tableau de bord</button>
+    <button data-view="kanban">Pipeline</button>
+    <button data-view="list">Liste</button>
+    <button data-view="contacts">Réseau</button>
+  </nav>
+  <div class="actions">
+    <span id="storage" class="storage"></span>
+    <button class="btn" id="menuBtn">Données ▾</button>
+    <button class="btn primary" id="addBtn" title="Raccourci : touche N">+ Opportunité</button>
+    <div id="menu" class="menu hidden"></div>
+  </div>
+</header>
+
+<main id="view"></main>
+
+<div id="modalBg" class="modal-bg hidden"><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
+<div id="toast" class="toast"></div>
+<input type="file" id="importInput" accept=".json,application/json" hidden>
+
+<script>
+/* =====================================================================
+   A. CONFIGURATION : étapes du pipeline, secteurs, sources
+   ===================================================================== */
+const STAGES = [
+  {id:'repere',    label:'Repéré',       color:'#64748b'},
+  {id:'contact',   label:'Contact pris', color:'#0ea5e9'},
+  {id:'candidate', label:'Candidaté',    color:'#6366f1'},
+  {id:'entretien', label:'Entretien',    color:'#c026d3'},
+  {id:'offre',     label:'Offre',        color:'#10b981'},
+  {id:'refus',     label:'Refus',        color:'#ef4444'},
+  {id:'silence',   label:'Sans réponse', color:'#a1a1aa'},
+];
+const SECTORS = {
+  'Biomédical':               '#ec4899',
+  'Matériaux / Électronique': '#6366f1',
+  'Environnement / Océan':    '#0d9488',
+  'Autre':                    '#64748b',
+};
+const SOURCES = ['LinkedIn','Site entreprise','Réseau / Cooptation','Welcome to the Jungle','APEC','Candidature spontanée','Salon / Événement','Autre'];
+const LS_KEY = 'jobtracker-v1';
+const STALE_DAYS = 21; // au-delà, une candidature sans nouvelles remonte dans "À faire"
+
+/* =====================================================================
+   B. OUTILS (dates, échappement HTML, identifiants)
+   ===================================================================== */
+const $ = s => document.querySelector(s);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const iso = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const today = () => iso(new Date());
+function daysFrom(s){ // négatif = passé, 0 = aujourd'hui, positif = futur
+  if (!s) return null;
+  return Math.round((new Date(s + 'T00:00:00') - new Date(today() + 'T00:00:00')) / 86400000);
+}
+function weekStart(){ const d = new Date(); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return iso(d); }
+const inWeek = s => !!s && s >= weekStart() && s <= today();
+const fmt = s => s ? new Date(s + 'T00:00:00').toLocaleDateString('fr-FR', {day:'numeric', month:'short'}) : '';
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const safeUrl = u => /^https?:\/\//i.test(u || '') ? u : '';
+const stageOf = id => STAGES.find(s => s.id === id) || STAGES[0];
+const isClosed = o => ['offre','refus','silence'].includes(o.stage);
+const hadInterview = o => ['entretien','offre'].includes(o.stage) || (o.history || []).some(h => h.stage === 'entretien');
+const hasResponse = o => hadInterview(o) || o.stage === 'refus';
+const lastInteraction = c => (c.interactions || []).slice().sort().pop() || null;
+
+function dueBadge(date){
+  const d = daysFrom(date); if (d === null) return '';
+  const cls = d < 0 ? 'b-late' : d === 0 ? 'b-today' : 'b-soon';
+  const txt = d < 0 ? `En retard · ${-d} j` : d === 0 ? "Aujourd'hui" : d === 1 ? 'Demain' : fmt(date);
+  return `<span class="badge ${cls}">${txt}</span>`;
+}
+function ago(date){ const d = daysFrom(date); if (d === null) return 'jamais'; return d === 0 ? "aujourd'hui" : `il y a ${-d} j`; }
+function sectorChip(s){ const c = SECTORS[s] || '#64748b'; return s ? `<span class="chip" style="background:${c}22;color:${c}">${esc(s)}</span>` : ''; }
+function avatar(c){
+  const ini = (c.name || '?').split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  let h = 0; for (const ch of c.name || '') h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return `<div class="avatar" style="background:hsl(${h} 55% 52%)">${esc(ini)}</div>`;
+}
+function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2200); }
+function download(content, name, type){
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], {type})); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/* =====================================================================
+   C. DONNÉES : modèle, chargement, sauvegarde
+   Trois couches :
+   1) localStorage = copie de travail dans le navigateur (toujours)
+   2) fichier JSON lié (Chrome/Edge) = vraie sauvegarde, idéalement dans un dossier cloud
+   3) export/import manuel = filet de sécurité
+   ===================================================================== */
+const blank = () => ({version:1, settings:{weeklyApps:5, weeklyNetwork:3}, opportunities:[], contacts:[]});
+function normalize(d){
+  d = d && typeof d === 'object' ? d : {};
+  return {
+    version: 1, updatedAt: d.updatedAt || null,
+    settings: {...blank().settings, ...(d.settings || {})},
+    opportunities: Array.isArray(d.opportunities) ? d.opportunities.map(o => ({history:[], ...o})) : [],
+    contacts: Array.isArray(d.contacts) ? d.contacts.map(c => ({interactions:[], ...c})) : [],
+  };
+}
+function loadLocal(){ try { return normalize(JSON.parse(localStorage.getItem(LS_KEY))); } catch(e){ return blank(); } }
+function saveLocal(){ try { localStorage.setItem(LS_KEY, JSON.stringify(db)); } catch(e){} }
+
+let db = loadLocal();
+let view = (() => { try { return localStorage.getItem('jt-view') || 'dash'; } catch(e){ return 'dash'; } })();
+let fileHandle = null, pendingHandle = null, fileState = 'none', lastWrite = 0, saveTimer = null;
+let listFilter = {q:'', sector:'', stage:''}, contactQ = '';
+const FS_OK = 'showOpenFilePicker' in window;
+
+// Mode Firefox / Safari (pas d'accès direct aux fichiers) :
+// on suit si des modifications n'ont pas encore été sauvegardées dans un fichier,
+// et "Sauvegarder" télécharge jobtracker-data.json, à enregistrer dans ton dossier cloud.
+const LS_SAVED = 'jt-lastsave';
+let lastSaved = (() => { try { return localStorage.getItem(LS_SAVED) || ''; } catch(e){ return ''; } })();
+const hasData = () => db.opportunities.length > 0 || db.contacts.length > 0;
+const unsaved = () => !FS_OK && hasData() && !!db.updatedAt && db.updatedAt !== lastSaved;
+function markSaved(){ lastSaved = db.updatedAt || ''; try { localStorage.setItem(LS_SAVED, lastSaved); } catch(e){} renderStorage(); }
+function saveDownload(){
+  download(JSON.stringify(db, null, 2), 'jobtracker-data.json', 'application/json');
+  markSaved(); toast("Sauvegarde téléchargée : remplace l'ancien fichier dans ton dossier cloud");
+}
+function savedLabel(s){
+  const d = new Date(s); if (isNaN(d)) return '';
+  const h = d.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+  return iso(d) === today() ? `à ${h}` : `le ${fmt(iso(d))} à ${h}`;
+}
+
+// Toute modification passe par persist() : sauvegarde locale + fichier (différé) + rafraîchissement
+function persist(){
+  db.updatedAt = new Date().toISOString();
+  saveLocal();
+  clearTimeout(saveTimer); saveTimer = setTimeout(writeFile, 300);
+  render();
+}
+async function writeFile(){
+  if (!fileHandle) return;
+  try {
+    const w = await fileHandle.createWritable();
+    await w.write(JSON.stringify(db, null, 2)); await w.close();
+    lastWrite = Date.now(); fileState = 'ok';
+  } catch(e){ fileState = 'error'; console.error(e); toast("Impossible d'écrire dans le fichier"); }
+  renderStorage();
+}
+
+// IndexedDB : sert uniquement à mémoriser QUEL fichier est lié, d'une session à l'autre
+function idb(){ return new Promise((res, rej) => { const r = indexedDB.open('jobtracker', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+async function idbSet(k, v){ const d = await idb(); return new Promise((res, rej) => { const t = d.transaction('kv', 'readwrite'); v === undefined ? t.objectStore('kv').delete(k) : t.objectStore('kv').put(v, k); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
+async function idbGet(k){ const d = await idb(); return new Promise((res, rej) => { const r = d.transaction('kv').objectStore('kv').get(k); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+
+async function attach(h, readIt){
+  fileHandle = h; pendingHandle = null;
+  try { await idbSet('handle', h); } catch(e){}
+  if (readIt){
+    const f = await h.getFile(); const txt = await f.text();
+    if (txt.trim()){ db = normalize(JSON.parse(txt)); saveLocal(); lastWrite = f.lastModified; }
+    else await writeFile();
+  }
+  fileState = 'ok'; render();
+}
+async function createFile(){
+  const h = await showSaveFilePicker({suggestedName:'jobtracker-data.json', types:[{description:'Données Job Tracker', accept:{'application/json':['.json']}}]});
+  fileHandle = h; try { await idbSet('handle', h); } catch(e){}
+  await writeFile(); render(); toast('Fichier créé : sauvegarde automatique active');
+}
+async function linkFile(){
+  const [h] = await showOpenFilePicker({types:[{description:'Données Job Tracker', accept:{'application/json':['.json']}}]});
+  if (db.opportunities.length && !confirm('Les données de ce fichier vont remplacer celles affichées. Continuer ?')) return;
+  await attach(h, true); toast('Fichier lié');
+}
+async function reconnect(){
+  if (!pendingHandle) return;
+  if (await pendingHandle.requestPermission({mode:'readwrite'}) === 'granted'){ await attach(pendingHandle, true); toast('Fichier reconnecté'); }
+}
+// Quand tu reviens sur l'onglet, on relit le fichier s'il a été modifié ailleurs (autre ordi via le cloud)
+async function syncFromFile(){
+  if (!fileHandle) return;
+  try {
+    const f = await fileHandle.getFile();
+    if (f.lastModified > lastWrite + 2000){
+      const txt = await f.text();
+      if (txt.trim() && txt !== JSON.stringify(db, null, 2)){
+        db = normalize(JSON.parse(txt)); saveLocal(); render(); toast('Données mises à jour depuis le fichier');
+      }
+      lastWrite = f.lastModified;
+    }
+  } catch(e){}
+}
+window.addEventListener('focus', syncFromFile);
+
+function exportJSON(){ download(JSON.stringify(db, null, 2), `jobtracker-sauvegarde-${today()}.json`, 'application/json'); }
+function exportCSV(){
+  const cols = [['company','Entreprise'],['role','Poste'],['sector','Secteur'],['source','Source'],['stage','Étape'],['appliedAt','Candidature'],['nextAction','Prochaine action'],['nextActionDate','Date action'],['url','Lien'],['notes','Notes']];
+  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const lines = [cols.map(c => q(c[1])).join(';'), ...db.opportunities.map(o => cols.map(([k]) => q(k === 'stage' ? stageOf(o.stage).label : o[k])).join(';'))];
+  download('\ufeff' + lines.join('\r\n'), `opportunites-${today()}.csv`, 'text/csv;charset=utf-8'); // ; + BOM = Excel FR lit bien les accents
+}
+
+/* =====================================================================
+   D. LOGIQUE MÉTIER
+   ===================================================================== */
+function setStage(o, stage){
+  o.stage = stage;
+  (o.history ||= []).push({stage, date: today()});
+  const idx = STAGES.findIndex(s => s.id === stage);
+  if (idx >= 2 && idx <= 4 && !o.appliedAt) o.appliedAt = today(); // passer en "Candidaté" ou plus = date auto
+}
+function todos(){
+  const t = [];
+  for (const o of db.opportunities){
+    if (isClosed(o)) continue;
+    const d = daysFrom(o.nextActionDate);
+    if (d !== null && d <= 0) t.push({kind:'opp', id:o.id, d, badge:dueBadge(o.nextActionDate), title:`${o.company} — ${o.nextAction || 'Action prévue'}`, sub:o.role});
+    else if (d === null && o.stage === 'candidate' && o.appliedAt && daysFrom(o.appliedAt) <= -STALE_DAYS){
+      const n = -daysFrom(o.appliedAt);
+      t.push({kind:'opp', id:o.id, d:-n, badge:`<span class="badge b-today">${n} j sans nouvelles</span>`, title:`${o.company} — relancer ou classer « Sans réponse »`, sub:o.role});
+    }
+  }
+  for (const c of db.contacts){
+    const d = daysFrom(c.nextFollowUp);
+    if (d !== null && d <= 0) t.push({kind:'contact', id:c.id, d, badge:dueBadge(c.nextFollowUp), title:`Relancer ${c.name}`, sub:[c.role, c.company].filter(Boolean).join(' · ')});
+  }
+  return t.sort((a, b) => a.d - b.d);
+}
+function loadDemo(){
+  const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return iso(x); };
+  const o1 = {id:uid(), company:'NeuroFlex (exemple)', role:'Ingénieur R&D implants neuronaux', sector:'Biomédical', source:'LinkedIn', stage:'candidate', appliedAt:d(-5), nextAction:'Relancer la RH par mail', nextActionDate:d(0), url:'', notes:'Exemple fictif : supprime-le quand tu veux.', createdAt:d(-8), history:[{stage:'candidate', date:d(-5)}]};
+  const o2 = {id:uid(), company:'Polymat Labs (exemple)', role:'Ingénieur matériaux polymères', sector:'Matériaux / Électronique', source:'Réseau / Cooptation', stage:'entretien', appliedAt:d(-12), nextAction:"Préparer l'entretien technique", nextActionDate:d(2), url:'', notes:'', createdAt:d(-15), history:[{stage:'entretien', date:d(-3)}]};
+  const o3 = {id:uid(), company:'OceanSense (exemple)', role:'Ingénieur capteurs embarqués', sector:'Environnement / Océan', source:'Site entreprise', stage:'repere', nextAction:'Trouver un contact interne', nextActionDate:d(-1), url:'', notes:'', createdAt:d(-1), history:[]};
+  db.opportunities.push(o1, o2, o3);
+  db.contacts.push(
+    {id:uid(), name:'Claire Martin', company:'NeuroFlex (exemple)', role:'Ingénieure R&D', email:'', linkedin:'', opportunityId:o1.id, interactions:[d(-6)], nextFollowUp:d(3), notes:'Exemple fictif'},
+    {id:uid(), name:'Paul Durand', company:'Polymat Labs (exemple)', role:'Responsable labo', email:'', linkedin:'', opportunityId:o2.id, interactions:[d(-2)], nextFollowUp:'', notes:''}
+  );
+  persist(); toast('Exemple chargé');
+}
+
+/* =====================================================================
+   E. VUES (génèrent le HTML de chaque onglet)
+   ===================================================================== */
+function emptyHTML(){
+  return `<div class="panel empty"><div class="big">🎯</div><h2>Ta recherche commence ici</h2>
+    <p class="muted">Ajoute ta première opportunité, ou charge un exemple pour découvrir l'outil.</p>
+    <div class="row-c"><button class="btn primary" data-act="new-opp">+ Première opportunité</button><button class="btn" data-act="demo">Charger un exemple</button></div>
+    <p class="muted small">${FS_OK ? 'Pense à lier un fichier de données (menu « Données ») pour sauvegarder hors du navigateur.'
+      : 'Déjà un fichier de sauvegarde ? Menu « Données » → « Ouvrir un fichier de données ». Ensuite, Ctrl+S sauvegarde.'}</p></div>`;
+}
+function goalHTML(label, val, goal, key){
+  const pct = Math.min(100, Math.round(100 * val / Math.max(1, goal)));
+  return `<div class="panel"><h3>${label}</h3>
+    <div class="goal-top"><span class="v">${val}</span><span class="muted">/ objectif</span>
+      <input type="number" min="1" max="50" value="${goal}" data-setting="${key}" title="Modifier l'objectif">
+      <span class="spacer"></span><span class="muted small">${pct >= 100 ? '✓ Objectif atteint' : `${Math.max(0, goal - val)} restant(s)`}</span></div>
+    <div class="progress ${pct >= 100 ? 'done' : ''}"><div style="width:${pct}%"></div></div></div>`;
+}
+const kpi = (v, l) => `<div class="panel kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`;
+
+function dashHTML(){
+  const ops = db.opportunities, s = db.settings;
+  if (!ops.length && !db.contacts.length) return emptyHTML();
+  const appsWeek = ops.filter(o => inWeek(o.appliedAt)).length;
+  const netWeek = db.contacts.reduce((n, c) => n + c.interactions.filter(inWeek).length, 0);
+  const applied = ops.filter(o => o.appliedAt);
+  const rate = applied.length ? Math.round(100 * applied.filter(hasResponse).length / applied.length) + ' %' : '–';
+  const t = todos();
+  const counts = STAGES.map(st => ops.filter(o => o.stage === st.id).length);
+  const max = Math.max(1, ...counts);
+  const funnel = STAGES.map((st, i) => `<div class="funnel-row"><span>${st.label}</span><div class="funnel-bar"><div style="width:${100 * counts[i] / max}%;background:${st.color}"></div></div><strong>${counts[i]}</strong></div>`).join('');
+  const sectorRows = Object.keys(SECTORS).map(sec => {
+    const so = ops.filter(o => o.sector === sec); if (!so.length) return '';
+    const ap = so.filter(o => o.appliedAt), rp = ap.filter(hasResponse);
+    return `<tr style="cursor:default"><td>${sectorChip(sec)}</td><td>${so.length}</td><td>${ap.length}</td><td>${rp.length}</td><td>${ap.length ? Math.round(100 * rp.length / ap.length) + ' %' : '–'}</td></tr>`;
+  }).join('');
+  return `
+    <div class="grid goals">${goalHTML('Candidatures cette semaine', appsWeek, s.weeklyApps, 'weeklyApps')}${goalHTML('Échanges réseau cette semaine', netWeek, s.weeklyNetwork, 'weeklyNetwork')}</div>
+    <div class="grid kpis">${kpi(ops.filter(o => !isClosed(o)).length, 'Opportunités actives')}${kpi(applied.length, 'Candidatures envoyées')}${kpi(rate, 'Taux de réponse')}${kpi(ops.filter(hadInterview).length, 'Entretiens obtenus')}</div>
+    <div class="grid dash2">
+      <div class="panel"><h3>À faire aujourd'hui (${t.length})</h3>
+        ${t.length ? t.map(x => `<div class="todo" data-open-${x.kind}="${x.id}">${x.badge}<div class="grow"><div class="t">${esc(x.title)}</div><div class="muted small">${esc(x.sub || '')}</div></div></div>`).join('')
+                   : `<p class="muted">Rien en retard. Bon moment pour repérer de nouvelles offres ou écrire à quelqu'un de ton réseau.</p>`}
+      </div>
+      <div class="grid">
+        <div class="panel"><h3>Pipeline</h3>${funnel}</div>
+        <div class="panel"><h3>Par secteur</h3>${sectorRows ? `<table><thead><tr><th>Secteur</th><th>Opp.</th><th>Cand.</th><th>Rép.</th><th>Taux</th></tr></thead><tbody>${sectorRows}</tbody></table>` : '<p class="muted small">Pas encore de données.</p>'}</div>
+      </div>
+    </div>`;
+}
+
+function sortOpps(a, b){
+  const da = a.nextActionDate || '9999', dbb = b.nextActionDate || '9999';
+  return da.localeCompare(dbb) || (b.createdAt || '').localeCompare(a.createdAt || '');
+}
+function cardHTML(o){
+  const nc = db.contacts.filter(c => c.opportunityId === o.id).length;
+  return `<article class="card" draggable="true" data-drag="${o.id}" data-open-opp="${o.id}" style="--c:${stageOf(o.stage).color}">
+    <div class="co">${esc(o.company)}</div><div class="ro">${esc(o.role)}</div>
+    <div class="meta">${sectorChip(o.sector)}${isClosed(o) ? '' : dueBadge(o.nextActionDate)}${nc ? `<span class="chip" style="background:var(--surface2);color:var(--muted)">👤 ${nc}</span>` : ''}</div>
+    ${o.nextAction && !isClosed(o) ? `<div class="na">→ ${esc(o.nextAction)}</div>` : ''}</article>`;
+}
+function kanbanHTML(){
+  return `<div class="board">${STAGES.map(s => {
+    const items = db.opportunities.filter(o => o.stage === s.id).sort(sortOpps);
+    return `<section class="col" data-drop="${s.id}"><div class="col-head"><span class="dot" style="background:${s.color}"></span>${s.label}<span class="count">${items.length}</span></div>
+      ${items.map(cardHTML).join('') || '<div class="col-empty">Glisse une carte ici</div>'}</section>`;
+  }).join('')}</div>`;
+}
+
+function listHTML(){
+  const so = Object.keys(SECTORS).map(s => `<option ${s === listFilter.sector ? 'selected' : ''}>${esc(s)}</option>`).join('');
+  const st = STAGES.map(s => `<option value="${s.id}" ${s.id === listFilter.stage ? 'selected' : ''}>${s.label}</option>`).join('');
+  return `<div class="toolbar"><input id="q" placeholder="Rechercher une entreprise, un poste, une note…" value="${esc(listFilter.q)}">
+    <select id="fSector"><option value="">Tous les secteurs</option>${so}</select>
+    <select id="fStage"><option value="">Toutes les étapes</option>${st}</select></div>
+    <div class="panel tablewrap" id="listBody">${listBody()}</div>`;
+}
+function listBody(){
+  const q = listFilter.q.toLowerCase();
+  const rows = db.opportunities.filter(o =>
+    (!listFilter.sector || o.sector === listFilter.sector) && (!listFilter.stage || o.stage === listFilter.stage) &&
+    (!q || [o.company, o.role, o.notes, o.nextAction].join(' ').toLowerCase().includes(q))).sort(sortOpps);
+  if (!rows.length) return '<p class="muted" style="padding:12px">Aucun résultat.</p>';
+  return `<table><thead><tr><th>Entreprise</th><th>Poste</th><th>Secteur</th><th>Étape</th><th>Candidature</th><th>Prochaine action</th><th></th></tr></thead><tbody>
+    ${rows.map(o => `<tr data-open-opp="${o.id}"><td><strong>${esc(o.company)}</strong></td><td>${esc(o.role)}</td><td>${sectorChip(o.sector)}</td>
+      <td><span class="pill" style="background:${stageOf(o.stage).color}">${stageOf(o.stage).label}</span></td><td>${fmt(o.appliedAt) || '<span class="muted">–</span>'}</td>
+      <td>${o.nextAction ? esc(o.nextAction) + ' ' : ''}${dueBadge(o.nextActionDate)}</td>
+      <td>${safeUrl(o.url) ? `<a href="${esc(o.url)}" target="_blank" rel="noopener" class="btn small">Offre ↗</a>` : ''}</td></tr>`).join('')}</tbody></table>
+    <p class="muted small" style="padding:8px 10px 0">${rows.length} opportunité(s)</p>`;
+}
+
+function contactsHTML(){
+  return `<div class="toolbar"><input id="cq" placeholder="Rechercher un nom, une entreprise…" value="${esc(contactQ)}">
+    <button class="btn primary" data-act="new-contact">+ Contact</button></div><div id="contactBody">${contactsBody()}</div>`;
+}
+function contactsBody(){
+  const q = contactQ.toLowerCase();
+  const cs = db.contacts.filter(c => !q || [c.name, c.company, c.role, c.notes].join(' ').toLowerCase().includes(q))
+    .sort((a, b) => (a.nextFollowUp || '9999').localeCompare(b.nextFollowUp || '9999') || (a.name || '').localeCompare(b.name || ''));
+  if (!cs.length) return `<div class="panel empty"><div class="big">🤝</div><h2>Ton réseau</h2><p class="muted">Ajoute les personnes à contacter : alumni, ingénieurs en poste, anciens encadrants. Note chaque échange pour suivre ton objectif hebdo.</p><div class="row-c"><button class="btn primary" data-act="new-contact">+ Premier contact</button></div></div>`;
+  return `<div class="cgrid">${cs.map(c => {
+    const o = db.opportunities.find(x => x.id === c.opportunityId);
+    return `<div class="panel ccard" data-open-contact="${c.id}">
+      <div class="ch">${avatar(c)}<div class="grow"><div class="cn">${esc(c.name)}</div><div class="muted small">${esc([c.role, c.company].filter(Boolean).join(' · '))}</div></div>${dueBadge(c.nextFollowUp)}</div>
+      ${o ? `<div class="small">↳ ${esc(o.company)} · ${esc(o.role)}</div>` : ''}
+      <div class="cf"><span class="muted small">Dernier échange : ${ago(lastInteraction(c))}</span><span class="spacer"></span>
+        ${c.email ? `<a class="btn small" href="mailto:${esc(c.email)}">Mail</a>` : ''}
+        ${safeUrl(c.linkedin) ? `<a class="btn small" href="${esc(c.linkedin)}" target="_blank" rel="noopener">LinkedIn</a>` : ''}
+        <button class="btn small" data-act="ping" data-id="${c.id}" title="Noter un échange aujourd'hui">+ Échange</button></div></div>`;
+  }).join('')}</div>`;
+}
+
+/* =====================================================================
+   F. FORMULAIRES (fenêtres modales)
+   ===================================================================== */
+const fld = (label, input, cls = '') => `<label class="f ${cls}">${label}${input}</label>`;
+const sel = (name, options, val) => `<select name="${name}">${options.map(o => `<option ${o === val ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+function openModal(html){ $('#modal').innerHTML = html; $('#modalBg').classList.remove('hidden'); setTimeout(() => $('#modal [autofocus]')?.focus(), 30); }
+function closeModal(){ $('#modalBg').classList.add('hidden'); $('#modal').innerHTML = ''; }
+function formData(f){ const d = Object.fromEntries(new FormData(f)); for (const k in d) d[k] = String(d[k]).trim(); return d; }
+
+function openOpp(id, preset = {}){
+  const o = id ? db.opportunities.find(x => x.id === id) : null; if (id && !o) return;
+  const v = o || {stage:'repere', sector:Object.keys(SECTORS)[0], source:SOURCES[0], ...preset};
+  const linked = o ? db.contacts.filter(c => c.opportunityId === o.id) : [];
+  openModal(`<form id="oppForm" autocomplete="off">
+    <div class="m-head"><h2>${o ? esc(o.company) : 'Nouvelle opportunité'}</h2><button type="button" class="icon" data-close aria-label="Fermer">×</button></div>
+    <div class="g2">
+      ${fld('Entreprise *', `<input name="company" required autofocus value="${esc(v.company)}">`)}
+      ${fld('Poste *', `<input name="role" required value="${esc(v.role)}">`)}
+      ${fld("Lien de l'offre", `<input name="url" type="url" placeholder="https://…" value="${esc(v.url)}">`, 'full')}
+      ${fld('Secteur', sel('sector', Object.keys(SECTORS), v.sector))}
+      ${fld('Source', sel('source', SOURCES, v.source))}
+      ${fld('Étape', `<select name="stage">${STAGES.map(s => `<option value="${s.id}" ${s.id === v.stage ? 'selected' : ''}>${s.label}</option>`).join('')}</select>`)}
+      ${fld('Date de candidature', `<input type="date" name="appliedAt" value="${esc(v.appliedAt)}">`)}
+      ${fld('Prochaine action', `<input name="nextAction" placeholder="ex : relancer par mail" value="${esc(v.nextAction)}">`)}
+      ${fld('À faire le', `<input type="date" name="nextActionDate" value="${esc(v.nextActionDate)}">`)}
+      ${fld('Notes', `<textarea name="notes" rows="4" placeholder="Contexte, salaire, impressions, questions à poser…">${esc(v.notes)}</textarea>`, 'full')}
+    </div>
+    ${o ? `<div class="linked"><div class="linked-head"><strong>Contacts liés</strong><button type="button" class="btn small" id="addLinked">+ Contact</button></div>
+      ${linked.length ? linked.map(c => `<div class="lk" data-oc="${c.id}">${avatar(c)}<div><div>${esc(c.name)}</div><div class="muted small">${esc(c.role || '')} · dernier échange ${ago(lastInteraction(c))}</div></div></div>`).join('')
+                      : `<p class="muted small">Aucun contact. Quelqu'un dans l'entreprise aide souvent à obtenir une réponse.</p>`}</div>` : ''}
+    <div class="m-foot">${o ? '<button type="button" class="btn danger" id="delOpp">Supprimer</button>' : ''}<span class="spacer"></span>
+      <button type="button" class="btn" data-close>Annuler</button><button class="btn primary" type="submit">Enregistrer</button></div>
+  </form>`);
+  const f = $('#oppForm');
+  const apply = () => {
+    if (!f.reportValidity()) return null;
+    const d = formData(f);
+    if (o){ const prev = o.stage; Object.assign(o, d, {stage:prev}); if (d.stage !== prev) setStage(o, d.stage); return o; }
+    const n = {id:uid(), createdAt:today(), history:[], ...d, stage:'repere'};
+    setStage(n, d.stage); db.opportunities.push(n); return n;
+  };
+  f.onsubmit = e => { e.preventDefault(); if (apply()){ persist(); closeModal(); toast(o ? 'Modifications enregistrées' : 'Opportunité ajoutée'); } };
+  if (o){
+    $('#delOpp').onclick = () => {
+      if (!confirm(`Supprimer « ${o.company} » ?`)) return;
+      db.opportunities = db.opportunities.filter(x => x !== o);
+      db.contacts.forEach(c => { if (c.opportunityId === o.id) c.opportunityId = ''; });
+      persist(); closeModal(); toast('Opportunité supprimée');
+    };
+    $('#addLinked').onclick = () => { if (apply()){ persist(); openContact(null, {opportunityId:o.id, company:o.company}); } };
+    f.querySelectorAll('[data-oc]').forEach(el => el.onclick = () => { if (apply()){ persist(); openContact(el.dataset.oc); } });
+  }
+}
+
+function openContact(id, preset = {}){
+  const c = id ? db.contacts.find(x => x.id === id) : null; if (id && !c) return;
+  const v = c || {interactions:[], ...preset};
+  const oppOpts = '<option value="">— Aucune —</option>' + db.opportunities.slice().sort((a, b) => a.company.localeCompare(b.company))
+    .map(o => `<option value="${o.id}" ${o.id === v.opportunityId ? 'selected' : ''}>${esc(o.company)} · ${esc(o.role)}</option>`).join('');
+  openModal(`<form id="cForm" autocomplete="off">
+    <div class="m-head"><h2>${c ? esc(c.name) : 'Nouveau contact'}</h2><button type="button" class="icon" data-close aria-label="Fermer">×</button></div>
+    <div class="g2">
+      ${fld('Nom *', `<input name="name" required autofocus value="${esc(v.name)}">`)}
+      ${fld('Entreprise', `<input name="company" value="${esc(v.company)}">`)}
+      ${fld('Rôle', `<input name="role" placeholder="ex : ingénieur R&D, alumni Mines" value="${esc(v.role)}">`)}
+      ${fld('Email', `<input name="email" type="email" value="${esc(v.email)}">`)}
+      ${fld('Profil LinkedIn', `<input name="linkedin" type="url" placeholder="https://linkedin.com/in/…" value="${esc(v.linkedin)}">`, 'full')}
+      ${fld('Opportunité liée', `<select name="opportunityId">${oppOpts}</select>`)}
+      ${fld('Prochaine relance', `<input type="date" name="nextFollowUp" value="${esc(v.nextFollowUp)}">`)}
+      ${fld('Notes', `<textarea name="notes" rows="3" placeholder="Comment vous vous êtes connus, sujets abordés…">${esc(v.notes)}</textarea>`, 'full')}
+      <label class="check full"><input type="checkbox" name="pingToday"> J'ai échangé avec cette personne aujourd'hui</label>
+      ${c ? `<p class="muted small full" style="margin:0">${c.interactions.length} échange(s) noté(s) · dernier ${ago(lastInteraction(c))}</p>` : ''}
+    </div>
+    <div class="m-foot">${c ? '<button type="button" class="btn danger" id="delC">Supprimer</button>' : ''}<span class="spacer"></span>
+      <button type="button" class="btn" data-close>Annuler</button><button class="btn primary" type="submit">Enregistrer</button></div>
+  </form>`);
+  const f = $('#cForm');
+  f.onsubmit = e => {
+    e.preventDefault();
+    const d = formData(f); const ping = !!d.pingToday; delete d.pingToday;
+    const t = c || {id:uid(), createdAt:today(), interactions:[]};
+    Object.assign(t, d);
+    if (ping && !t.interactions.includes(today())) t.interactions.push(today());
+    if (!c) db.contacts.push(t);
+    persist(); closeModal(); toast(c ? 'Contact mis à jour' : 'Contact ajouté');
+  };
+  if (c) $('#delC').onclick = () => { if (confirm(`Supprimer ${c.name} ?`)){ db.contacts = db.contacts.filter(x => x !== c); persist(); closeModal(); toast('Contact supprimé'); } };
+}
+
+/* =====================================================================
+   G. RENDU GÉNÉRAL, MENU, ÉVÉNEMENTS
+   ===================================================================== */
+function renderStorage(){
+  const el = $('#storage'); let cls, txt, title;
+  if (fileState === 'error'){ cls = 'err'; txt = '● Erreur fichier'; title = "L'écriture a échoué. Exporte une sauvegarde par sécurité."; }
+  else if (fileHandle){ cls = 'ok'; txt = '● ' + fileHandle.name; title = 'Sauvegarde automatique dans ce fichier'; }
+  else if (pendingHandle){ cls = 'warn'; txt = '● Cliquer pour reconnecter'; title = 'Le navigateur demande ton accord pour rouvrir le fichier'; }
+  else if (!FS_OK && unsaved()){ cls = 'warn'; txt = '● Non sauvegardé · Ctrl+S'; title = 'Clique (ou Ctrl+S) pour télécharger la sauvegarde dans ton dossier cloud'; }
+  else if (!FS_OK && lastSaved && hasData()){ cls = 'ok'; txt = '● Sauvegardé ' + savedLabel(lastSaved); title = 'Ton fichier de sauvegarde est à jour'; }
+  else if (!FS_OK){ cls = 'warn'; txt = '● Navigateur uniquement'; title = 'Rien de sauvegardé hors du navigateur pour l\'instant'; }
+  else { cls = 'warn'; txt = '● Navigateur uniquement'; title = 'Données seulement dans ce navigateur. Lie un fichier via le menu Données.'; }
+  el.className = 'storage ' + cls; el.textContent = txt; el.title = title;
+}
+function render(){
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  $('#weekLabel').textContent = `Semaine du ${fmt(weekStart())} · ${new Date().toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'})}`;
+  renderStorage();
+  $('#view').innerHTML = view === 'kanban' ? kanbanHTML() : view === 'list' ? listHTML() : view === 'contacts' ? contactsHTML() : dashHTML();
+}
+function menuHTML(){
+  let h = '';
+  if (FS_OK){
+    if (pendingHandle) h += `<button data-menu="reconnect">🔄 Reconnecter « ${esc(pendingHandle.name)} »</button>`;
+    h += `<button data-menu="create">📄 Créer un fichier de données…</button><button data-menu="link">📂 Ouvrir un fichier existant…</button>`;
+    if (fileHandle) h += `<button data-menu="unlink">Délier le fichier</button>`;
+    h += `<div class="hint">Place le fichier dans ton dossier OneDrive, Drive ou Dropbox pour le retrouver sur un autre ordinateur.</div>`;
+  } else {
+    h += `<button data-menu="save">💾 Sauvegarder maintenant (Ctrl+S)</button><button data-menu="import">📂 Ouvrir un fichier de données…</button>
+      <div class="hint">Enregistre <b>jobtracker-data.json</b> dans ton dossier OneDrive, Drive ou Dropbox en remplaçant l'ancien. Sur un autre ordinateur, ouvre ce même fichier.</div>`;
+  }
+  return h + `<hr><button data-menu="export">⬇️ Exporter une copie datée (JSON)</button>${FS_OK ? '<button data-menu="import">⬆️ Importer une sauvegarde…</button>' : ''}
+    <button data-menu="csv">📊 Exporter en CSV (Excel)</button><hr><button data-menu="wipe" class="danger">Tout effacer…</button>`;
+}
+function toggleMenu(force){ const m = $('#menu'); const open = force ?? m.classList.contains('hidden'); if (open) m.innerHTML = menuHTML(); m.classList.toggle('hidden', !open); }
+
+$('#tabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; view = b.dataset.view; try { localStorage.setItem('jt-view', view); } catch(_){} render(); };
+$('#addBtn').onclick = () => openOpp();
+$('#menuBtn').onclick = e => { e.stopPropagation(); toggleMenu(); };
+$('#storage').onclick = e => { e.stopPropagation(); pendingHandle ? reconnect() : unsaved() ? saveDownload() : toggleMenu(); };
+document.addEventListener('click', e => { if (!e.target.closest('#menu')) toggleMenu(false); });
+$('#menu').onclick = async e => {
+  const b = e.target.closest('[data-menu]'); if (!b) return; toggleMenu(false);
+  try {
+    switch (b.dataset.menu){
+      case 'create': await createFile(); break;
+      case 'link': await linkFile(); break;
+      case 'reconnect': await reconnect(); break;
+      case 'unlink': fileHandle = null; fileState = 'none'; await idbSet('handle', undefined); render(); toast('Fichier délié'); break;
+      case 'save': saveDownload(); break;
+      case 'export': exportJSON(); break;
+      case 'csv': exportCSV(); break;
+      case 'import': $('#importInput').click(); break;
+      case 'wipe': if (confirm('Effacer TOUTES les données ? Exporte une sauvegarde avant si besoin.')){ db = blank(); persist(); toast('Données effacées'); } break;
+    }
+  } catch(err){ if (err.name !== 'AbortError'){ console.error(err); toast('Opération impossible : ' + err.message); } }
+};
+$('#importInput').onchange = async e => {
+  const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+  try {
+    const data = normalize(JSON.parse(await file.text()));
+    if (!confirm(`Importer ${data.opportunities.length} opportunité(s) et ${data.contacts.length} contact(s) ? Les données actuelles seront remplacées.`)) return;
+    db = data; persist(); toast('Import réussi');
+    if (!FS_OK) markSaved(); // le fichier ouvert correspond exactement aux données affichées
+  } catch(err){ toast("Fichier invalide : ce n'est pas une sauvegarde Job Tracker"); }
+};
+
+// Délégation d'événements : un seul écouteur pour tous les éléments de la vue
+const V = $('#view');
+V.addEventListener('click', e => {
+  if (e.target.closest('a')) return;
+  const act = e.target.closest('[data-act]');
+  if (act){
+    e.stopPropagation();
+    if (act.dataset.act === 'new-opp') openOpp();
+    if (act.dataset.act === 'new-contact') openContact();
+    if (act.dataset.act === 'demo') loadDemo();
+    if (act.dataset.act === 'ping'){
+      const c = db.contacts.find(x => x.id === act.dataset.id);
+      if (c && !c.interactions.includes(today())){ c.interactions.push(today()); persist(); toast(`Échange avec ${c.name} noté`); }
+      else toast("Déjà noté aujourd'hui");
+    }
+    return;
+  }
+  const o = e.target.closest('[data-open-opp]'); if (o) return openOpp(o.dataset.openOpp);
+  const c = e.target.closest('[data-open-contact]'); if (c) return openContact(c.dataset.openContact);
+});
+V.addEventListener('input', e => {
+  if (e.target.id === 'q'){ listFilter.q = e.target.value; $('#listBody').innerHTML = listBody(); }
+  if (e.target.id === 'cq'){ contactQ = e.target.value; $('#contactBody').innerHTML = contactsBody(); }
+});
+V.addEventListener('change', e => {
+  if (e.target.id === 'fSector'){ listFilter.sector = e.target.value; $('#listBody').innerHTML = listBody(); }
+  if (e.target.id === 'fStage'){ listFilter.stage = e.target.value; $('#listBody').innerHTML = listBody(); }
+  if (e.target.dataset.setting){ db.settings[e.target.dataset.setting] = Math.max(1, parseInt(e.target.value) || 1); persist(); }
+});
+// Glisser-déposer du kanban
+V.addEventListener('dragstart', e => { const c = e.target.closest?.('[data-drag]'); if (!c) return; e.dataTransfer.setData('text/plain', c.dataset.drag); e.dataTransfer.effectAllowed = 'move'; c.classList.add('dragging'); });
+V.addEventListener('dragend', () => document.querySelectorAll('.dragging,.over').forEach(x => x.classList.remove('dragging', 'over')));
+V.addEventListener('dragover', e => { const col = e.target.closest('[data-drop]'); if (!col) return; e.preventDefault(); document.querySelectorAll('.col.over').forEach(x => x !== col && x.classList.remove('over')); col.classList.add('over'); });
+V.addEventListener('drop', e => {
+  const col = e.target.closest('[data-drop]'); if (!col) return; e.preventDefault();
+  const o = db.opportunities.find(x => x.id === e.dataTransfer.getData('text/plain'));
+  if (o && o.stage !== col.dataset.drop){ setStage(o, col.dataset.drop); persist(); toast(`${o.company} → ${stageOf(o.stage).label}`); }
+});
+
+$('#modalBg').addEventListener('click', e => { if (e.target.id === 'modalBg' || e.target.closest('[data-close]')) closeModal(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape'){ closeModal(); toggleMenu(false); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's'){ // Ctrl+S = sauvegarder
+    e.preventDefault();
+    if (fileHandle){ writeFile(); toast('Enregistré'); } else saveDownload();
+    return;
+  }
+  const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName);
+  if (!typing && $('#modalBg').classList.contains('hidden') && (e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey){ e.preventDefault(); openOpp(); }
+});
+
+// Démarrage : affiche les données locales, puis tente de retrouver le fichier lié
+// Firefox : avertit si tu fermes l'onglet avec des modifications non sauvegardées
+window.addEventListener('beforeunload', e => { if (unsaved()){ e.preventDefault(); e.returnValue = ''; } });
+
+(async function boot(){
+  render();
+  // Demande au navigateur de ne pas effacer les données de la page pour libérer de l'espace
+  try { navigator.storage?.persist?.().catch(() => {}); } catch(e){}
+  if (!FS_OK) return;
+  try {
+    const h = await idbGet('handle'); if (!h) return;
+    if (await h.queryPermission({mode:'readwrite'}) === 'granted') await attach(h, true);
+    else { pendingHandle = h; renderStorage(); }
+  } catch(e){ console.warn(e); }
+})();
+</script>
+</body>
+</html>
