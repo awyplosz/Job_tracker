@@ -1,0 +1,9 @@
+# Données personnelles (contacts, candidatures) : ne JAMAIS les versionner
+*.json
+*.csv
+data/
+
+# Système
+.DS_Store
+Thumbs.db
+.vscode/
