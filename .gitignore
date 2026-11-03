@@ -6,4 +6,9 @@ data/
 # Système
 .DS_Store
 Thumbs.db
-.vscode/
+
+# VS Code : on partage la config du projet, pas les fichiers locaux
+# (les exceptions sont nécessaires à cause de la règle *.json plus haut)
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
