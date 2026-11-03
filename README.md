@@ -41,6 +41,12 @@ Conseil : ouvre l'appli via GitHub Pages plutôt qu'en double-clic, l'adresse st
 
 Raccourcis clavier : `N` pour ajouter une opportunité, `Ctrl+S` pour sauvegarder.
 
+## Fonctions V2
+
+- **Version du CV envoyée** : champ dans chaque opportunité (suggestions des versions déjà utilisées). Visible sur les cartes et dans la liste.
+- **Onglet Stats** : taux de réponse, entretiens, offres et délai moyen de réponse, par secteur, par version de CV et par source. En dessous de 5 candidatures, le taux est marqué `*` (trop peu pour conclure).
+- **Fiche d'entretien** : bouton « 📝 Fiche d'entretien » dans l'opportunité (date, format, pitch, recherche entreprise, points forts, questions probables, questions à poser, checklist, bilan). Un entretien dans les 3 jours apparaît dans « À faire ».
+
 ## Sauvegardes
 
 - La pastille en haut à droite indique où sont tes données (vert = fichier lié).
@@ -58,7 +64,9 @@ Vérifie avec `git status` avant chaque commit.
 {
   "settings": { "weeklyApps": 5, "weeklyNetwork": 3 },
   "opportunities": [{ "id", "company", "role", "url", "sector", "source", "stage",
-                      "appliedAt", "nextAction", "nextActionDate", "notes", "history": [] }],
+                      "cvVersion", "appliedAt", "nextAction", "nextActionDate", "notes", "history": [],
+                      "prep": { "date", "format", "who", "pitch", "research", "strengths",
+                                "qa", "ask", "debrief", "checklist": [{ "t", "done" }] } }],
   "contacts": [{ "id", "name", "company", "role", "email", "linkedin",
                  "opportunityId", "interactions": ["2026-11-02"], "nextFollowUp", "notes" }]
 }

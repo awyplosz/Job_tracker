@@ -129,6 +129,21 @@ tbody tr{cursor:pointer} tbody tr:hover{background:var(--surface2)}
 .lk{display:flex;gap:10px;align-items:center;padding:8px;border-radius:9px;cursor:pointer}
 .lk:hover{background:var(--surface2)}
 
+/* ============ 7b. STATS & FICHE D'ENTRETIEN (V2) ============ */
+.stats{display:grid;gap:16px}
+.stats .insight{background:var(--accent-soft);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px}
+.rate{display:flex;align-items:center;gap:8px;min-width:120px}
+.rate .funnel-bar{width:70px;flex:none}
+.cv-chip{background:var(--surface2);color:var(--muted)}
+.prep-ctx{background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13px}
+.prep-ctx .notes{white-space:pre-wrap;color:var(--muted);margin-top:6px;max-height:90px;overflow:auto}
+.prep-sec{margin:18px 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.ck{display:flex;align-items:center;gap:6px;padding:2px 0}
+.ck .check{flex:1}
+.ck .done{text-decoration:line-through;color:var(--muted)}
+.ck-add{display:flex;gap:8px;margin-top:8px}
+.ck-add input{flex:1;font:inherit;padding:7px 10px;border:1px solid var(--border);border-radius:9px;background:var(--bg);color:var(--text)}
+
 /* ============ 8. DIVERS ============ */
 .empty{text-align:center;padding:56px 20px;max-width:560px;margin:30px auto}
 .empty .big{font-size:44px} .empty h2{margin:8px 0}
@@ -150,6 +165,7 @@ tbody tr{cursor:pointer} tbody tr:hover{background:var(--surface2)}
     <button data-view="kanban">Pipeline</button>
     <button data-view="list">Liste</button>
     <button data-view="contacts">Réseau</button>
+    <button data-view="stats">Stats</button>
   </nav>
   <div class="actions">
     <span id="storage" class="storage"></span>
@@ -208,7 +224,14 @@ const stageOf = id => STAGES.find(s => s.id === id) || STAGES[0];
 const isClosed = o => ['offre','refus','silence'].includes(o.stage);
 const hadInterview = o => ['entretien','offre'].includes(o.stage) || (o.history || []).some(h => h.stage === 'entretien');
 const hasResponse = o => hadInterview(o) || o.stage === 'refus';
-const lastInteraction = c => (c.interactions || []).slice().sort().pop() || null;
+const reachedOffer = o => o.stage === 'offre' || (o.history || []).some(h => h.stage === 'offre');
+const responseDate = o => (o.history || []).filter(h => ['entretien','refus','offre'].includes(h.stage)).map(h => h.date).sort()[0] || null;
+const daysBetween = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000);
+const PREP_TEXT = ['pitch','research','strengths','qa','ask','debrief'];
+const hasPrep = o => !!o.prep && (!!o.prep.date || PREP_TEXT.some(k => o.prep[k]));
+const prepProgress = o => { const c = o.prep?.checklist || []; return c.length ? `${c.filter(x => x.done).length}/${c.length}` : ''; };
+const cvVersions = () => [...new Set(db.opportunities.map(o => (o.cvVersion || '').trim()).filter(Boolean))].sort();
+const lastInteraction = c =>(c.interactions || []).slice().sort().pop() || null;
 
 function dueBadge(date){
   const d = daysFrom(date); if (d === null) return '';
@@ -337,7 +360,7 @@ window.addEventListener('focus', syncFromFile);
 
 function exportJSON(){ download(JSON.stringify(db, null, 2), `jobtracker-sauvegarde-${today()}.json`, 'application/json'); }
 function exportCSV(){
-  const cols = [['company','Entreprise'],['role','Poste'],['sector','Secteur'],['source','Source'],['stage','Étape'],['appliedAt','Candidature'],['nextAction','Prochaine action'],['nextActionDate','Date action'],['url','Lien'],['notes','Notes']];
+  const cols = [['company','Entreprise'],['role','Poste'],['sector','Secteur'],['source','Source'],['cvVersion','Version CV'],['stage','Étape'],['appliedAt','Candidature'],['nextAction','Prochaine action'],['nextActionDate','Date action'],['url','Lien'],['notes','Notes']];
   const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = [cols.map(c => q(c[1])).join(';'), ...db.opportunities.map(o => cols.map(([k]) => q(k === 'stage' ? stageOf(o.stage).label : o[k])).join(';'))];
   download('\ufeff' + lines.join('\r\n'), `opportunites-${today()}.csv`, 'text/csv;charset=utf-8'); // ; + BOM = Excel FR lit bien les accents
@@ -363,6 +386,11 @@ function todos(){
       t.push({kind:'opp', id:o.id, d:-n, badge:`<span class="badge b-today">${n} j sans nouvelles</span>`, title:`${o.company} — relancer ou classer « Sans réponse »`, sub:o.role});
     }
   }
+  for (const o of db.opportunities){ // entretien à venir (fiche de préparation)
+    if (isClosed(o) || !o.prep?.date) continue;
+    const d = daysFrom(o.prep.date);
+    if (d !== null && d >= 0 && d <= 3) t.push({kind:'prep', id:o.id, d, badge:dueBadge(o.prep.date), title:`Entretien — ${o.company}`, sub:`Préparation : ${prepProgress(o) || 'fiche à remplir'}`});
+  }
   for (const c of db.contacts){
     const d = daysFrom(c.nextFollowUp);
     if (d !== null && d <= 0) t.push({kind:'contact', id:c.id, d, badge:dueBadge(c.nextFollowUp), title:`Relancer ${c.name}`, sub:[c.role, c.company].filter(Boolean).join(' · ')});
@@ -371,8 +399,8 @@ function todos(){
 }
 function loadDemo(){
   const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return iso(x); };
-  const o1 = {id:uid(), company:'NeuroFlex (exemple)', role:'Ingénieur R&D implants neuronaux', sector:'Biomédical', source:'LinkedIn', stage:'candidate', appliedAt:d(-5), nextAction:'Relancer la RH par mail', nextActionDate:d(0), url:'', notes:'Exemple fictif : supprime-le quand tu veux.', createdAt:d(-8), history:[{stage:'candidate', date:d(-5)}]};
-  const o2 = {id:uid(), company:'Polymat Labs (exemple)', role:'Ingénieur matériaux polymères', sector:'Matériaux / Électronique', source:'Réseau / Cooptation', stage:'entretien', appliedAt:d(-12), nextAction:"Préparer l'entretien technique", nextActionDate:d(2), url:'', notes:'', createdAt:d(-15), history:[{stage:'entretien', date:d(-3)}]};
+  const o1 = {id:uid(), company:'NeuroFlex (exemple)', role:'Ingénieur R&D implants neuronaux', sector:'Biomédical', source:'LinkedIn', cvVersion:'CV Biomédical v1', stage:'candidate', appliedAt:d(-5), nextAction:'Relancer la RH par mail', nextActionDate:d(0), url:'', notes:'Exemple fictif : supprime-le quand tu veux.', createdAt:d(-8), history:[{stage:'candidate', date:d(-5)}]};
+  const o2 = {id:uid(), company:'Polymat Labs (exemple)', role:'Ingénieur matériaux polymères', sector:'Matériaux / Électronique', source:'Réseau / Cooptation', cvVersion:'CV Matériaux v2', stage:'entretien', appliedAt:d(-12), prep:{date:d(2), format:'Visio', who:'Responsable labo', checklist:[{t:"Relire l'offre et mes notes", done:true}, {t:'Préparer mon pitch de 2 minutes', done:false}]}, nextAction:"Préparer l'entretien technique", nextActionDate:d(2), url:'', notes:'', createdAt:d(-15), history:[{stage:'entretien', date:d(-3)}]};
   const o3 = {id:uid(), company:'OceanSense (exemple)', role:'Ingénieur capteurs embarqués', sector:'Environnement / Océan', source:'Site entreprise', stage:'repere', nextAction:'Trouver un contact interne', nextActionDate:d(-1), url:'', notes:'', createdAt:d(-1), history:[]};
   db.opportunities.push(o1, o2, o3);
   db.contacts.push(
@@ -422,7 +450,7 @@ function dashHTML(){
     <div class="grid goals">${goalHTML('Candidatures cette semaine', appsWeek, s.weeklyApps, 'weeklyApps')}${goalHTML('Échanges réseau cette semaine', netWeek, s.weeklyNetwork, 'weeklyNetwork')}</div>
     <div class="grid kpis">${kpi(ops.filter(o => !isClosed(o)).length, 'Opportunités actives')}${kpi(applied.length, 'Candidatures envoyées')}${kpi(rate, 'Taux de réponse')}${kpi(ops.filter(hadInterview).length, 'Entretiens obtenus')}</div>
     <div class="grid dash2">
-      <div class="panel"><h3>À faire aujourd'hui (${t.length})</h3>
+      <div class="panel"><h3>À faire (${t.length})</h3>
         ${t.length ? t.map(x => `<div class="todo" data-open-${x.kind}="${x.id}">${x.badge}<div class="grow"><div class="t">${esc(x.title)}</div><div class="muted small">${esc(x.sub || '')}</div></div></div>`).join('')
                    : `<p class="muted">Rien en retard. Bon moment pour repérer de nouvelles offres ou écrire à quelqu'un de ton réseau.</p>`}
       </div>
@@ -441,7 +469,7 @@ function cardHTML(o){
   const nc = db.contacts.filter(c => c.opportunityId === o.id).length;
   return `<article class="card" draggable="true" data-drag="${o.id}" data-open-opp="${o.id}" style="--c:${stageOf(o.stage).color}">
     <div class="co">${esc(o.company)}</div><div class="ro">${esc(o.role)}</div>
-    <div class="meta">${sectorChip(o.sector)}${isClosed(o) ? '' : dueBadge(o.nextActionDate)}${nc ? `<span class="chip" style="background:var(--surface2);color:var(--muted)">👤 ${nc}</span>` : ''}</div>
+    <div class="meta">${sectorChip(o.sector)}${isClosed(o) ? '' : dueBadge(o.nextActionDate)}${nc ? `<span class="chip" style="background:var(--surface2);color:var(--muted)">👤 ${nc}</span>` : ''}${o.cvVersion ? `<span class="chip cv-chip" title="Version du CV envoyée">📄 ${esc(o.cvVersion)}</span>` : ''}${hasPrep(o) ? `<span class="chip cv-chip" title="Fiche d'entretien">📝 ${esc(prepProgress(o) || 'fiche')}</span>` : ''}</div>
     ${o.nextAction && !isClosed(o) ? `<div class="na">→ ${esc(o.nextAction)}</div>` : ''}</article>`;
 }
 function kanbanHTML(){
@@ -464,11 +492,12 @@ function listBody(){
   const q = listFilter.q.toLowerCase();
   const rows = db.opportunities.filter(o =>
     (!listFilter.sector || o.sector === listFilter.sector) && (!listFilter.stage || o.stage === listFilter.stage) &&
-    (!q || [o.company, o.role, o.notes, o.nextAction].join(' ').toLowerCase().includes(q))).sort(sortOpps);
+    (!q || [o.company, o.role, o.notes, o.nextAction, o.cvVersion].join(' ').toLowerCase().includes(q))).sort(sortOpps);
   if (!rows.length) return '<p class="muted" style="padding:12px">Aucun résultat.</p>';
-  return `<table><thead><tr><th>Entreprise</th><th>Poste</th><th>Secteur</th><th>Étape</th><th>Candidature</th><th>Prochaine action</th><th></th></tr></thead><tbody>
+  return `<table><thead><tr><th>Entreprise</th><th>Poste</th><th>Secteur</th><th>Étape</th><th>Candidature</th><th>CV</th><th>Prochaine action</th><th></th></tr></thead><tbody>
     ${rows.map(o => `<tr data-open-opp="${o.id}"><td><strong>${esc(o.company)}</strong></td><td>${esc(o.role)}</td><td>${sectorChip(o.sector)}</td>
       <td><span class="pill" style="background:${stageOf(o.stage).color}">${stageOf(o.stage).label}</span></td><td>${fmt(o.appliedAt) || '<span class="muted">–</span>'}</td>
+      <td>${o.cvVersion ? esc(o.cvVersion) : '<span class="muted">–</span>'}</td>
       <td>${o.nextAction ? esc(o.nextAction) + ' ' : ''}${dueBadge(o.nextActionDate)}</td>
       <td>${safeUrl(o.url) ? `<a href="${esc(o.url)}" target="_blank" rel="noopener" class="btn small">Offre ↗</a>` : ''}</td></tr>`).join('')}</tbody></table>
     <p class="muted small" style="padding:8px 10px 0">${rows.length} opportunité(s)</p>`;
@@ -495,6 +524,37 @@ function contactsBody(){
   }).join('')}</div>`;
 }
 
+// Stats (V2) : où tombent les réponses ? par secteur, par version de CV, par source
+function statRow(label, so){
+  const ap = so.filter(o => o.appliedAt), rp = ap.filter(hasResponse);
+  const delays = rp.map(o => { const r = responseDate(o); return r ? daysBetween(o.appliedAt, r) : null; }).filter(d => d !== null && d >= 0);
+  return {label, n:so.length, ap:ap.length, rp:rp.length, iv:so.filter(hadInterview).length, of:so.filter(reachedOffer).length,
+    rate: ap.length ? rp.length / ap.length : null, avg: delays.length ? Math.round(delays.reduce((a, b) => a + b, 0) / delays.length) : null};
+}
+function statTable(title, rows, hint = ''){
+  if (!rows.length) return `<div class="panel"><h3>${title}</h3><p class="muted small">Pas encore de données.</p></div>`;
+  return `<div class="panel tablewrap"><h3>${title}</h3><table><thead><tr><th></th><th>Opp.</th><th>Cand.</th><th>Réponses</th><th>Taux de réponse</th><th>Entretiens</th><th>Offres</th><th>Délai moy.</th></tr></thead><tbody>
+    ${rows.map(r => `<tr style="cursor:default"><td>${r.html || esc(r.label)}</td><td>${r.n}</td><td>${r.ap}</td><td>${r.rp}</td>
+      <td>${r.rate === null ? '<span class="muted">–</span>' : `<div class="rate"><div class="funnel-bar"><div style="width:${Math.round(100 * r.rate)}%;background:var(--accent)"></div></div><strong>${Math.round(100 * r.rate)} %</strong>${r.ap < 5 ? '<span class="muted" title="Moins de 5 candidatures : à prendre avec prudence">*</span>' : ''}</div>`}</td>
+      <td>${r.iv}</td><td>${r.of}</td><td>${r.avg === null ? '<span class="muted">–</span>' : r.avg + ' j'}</td></tr>`).join('')}</tbody></table>
+    <p class="muted small" style="padding:8px 10px 0">* moins de 5 candidatures : trop peu pour conclure. ${hint}</p></div>`;
+}
+function statsHTML(){
+  const ops = db.opportunities;
+  if (!ops.length) return `<div class="panel empty"><div class="big">📊</div><h2>Stats</h2><p class="muted">Ajoute des opportunités et des dates de candidature : tu verras ici où tombent tes réponses.</p></div>`;
+  const group = (list, keyFn) => { const m = new Map(); list.forEach(o => { const k = keyFn(o); if (!m.has(k)) m.set(k, []); m.get(k).push(o); }); return m; };
+  const sectorRows = Object.keys(SECTORS).filter(s => ops.some(o => o.sector === s)).map(s => ({...statRow(s, ops.filter(o => o.sector === s)), html:sectorChip(s)}));
+  const cvRows = [...group(ops.filter(o => o.appliedAt), o => (o.cvVersion || '').trim() || 'Non renseignée')].map(([k, v]) => statRow(k, v)).sort((a, b) => b.ap - a.ap);
+  const srcRows = [...group(ops, o => o.source || 'Autre')].map(([k, v]) => statRow(k, v)).sort((a, b) => b.n - a.n);
+  const best = sectorRows.filter(r => r.ap >= 3 && r.rate !== null).sort((a, b) => b.rate - a.rate || b.ap - a.ap)[0];
+  const insight = best ? `Meilleur taux de réponse : <strong>${esc(best.label)}</strong> (${Math.round(100 * best.rate)} % sur ${best.ap} candidatures).`
+    : 'Il faut au moins 3 candidatures dans un secteur pour dégager une tendance.';
+  return `<div class="stats"><div class="insight">${insight}</div>
+    ${statTable('Par secteur', sectorRows, "Réponse = entretien, offre ou refus. Délai = jours entre la candidature et la première réponse.")}
+    ${statTable('Par version de CV envoyée', cvRows, 'Compare tes versions de CV : seules les candidatures envoyées comptent.')}
+    ${statTable('Par source', srcRows)}</div>`;
+}
+
 /* =====================================================================
    F. FORMULAIRES (fenêtres modales)
    ===================================================================== */
@@ -518,6 +578,7 @@ function openOpp(id, preset = {}){
       ${fld('Source', sel('source', SOURCES, v.source))}
       ${fld('Étape', `<select name="stage">${STAGES.map(s => `<option value="${s.id}" ${s.id === v.stage ? 'selected' : ''}>${s.label}</option>`).join('')}</select>`)}
       ${fld('Date de candidature', `<input type="date" name="appliedAt" value="${esc(v.appliedAt)}">`)}
+      ${fld('Version du CV envoyée', `<input name="cvVersion" list="cvList" placeholder="ex : CV Biomédical v2" value="${esc(v.cvVersion)}"><datalist id="cvList">${cvVersions().map(x => `<option value="${esc(x)}">`).join('')}</datalist>`, 'full')}
       ${fld('Prochaine action', `<input name="nextAction" placeholder="ex : relancer par mail" value="${esc(v.nextAction)}">`)}
       ${fld('À faire le', `<input type="date" name="nextActionDate" value="${esc(v.nextActionDate)}">`)}
       ${fld('Notes', `<textarea name="notes" rows="4" placeholder="Contexte, salaire, impressions, questions à poser…">${esc(v.notes)}</textarea>`, 'full')}
@@ -525,7 +586,7 @@ function openOpp(id, preset = {}){
     ${o ? `<div class="linked"><div class="linked-head"><strong>Contacts liés</strong><button type="button" class="btn small" id="addLinked">+ Contact</button></div>
       ${linked.length ? linked.map(c => `<div class="lk" data-oc="${c.id}">${avatar(c)}<div><div>${esc(c.name)}</div><div class="muted small">${esc(c.role || '')} · dernier échange ${ago(lastInteraction(c))}</div></div></div>`).join('')
                       : `<p class="muted small">Aucun contact. Quelqu'un dans l'entreprise aide souvent à obtenir une réponse.</p>`}</div>` : ''}
-    <div class="m-foot">${o ? '<button type="button" class="btn danger" id="delOpp">Supprimer</button>' : ''}<span class="spacer"></span>
+    <div class="m-foot">${o ? '<button type="button" class="btn danger" id="delOpp">Supprimer</button><button type="button" class="btn" id="openPrep">📝 Fiche d\'entretien</button>' : ''}<span class="spacer"></span>
       <button type="button" class="btn" data-close>Annuler</button><button class="btn primary" type="submit">Enregistrer</button></div>
   </form>`);
   const f = $('#oppForm');
@@ -544,9 +605,50 @@ function openOpp(id, preset = {}){
       db.contacts.forEach(c => { if (c.opportunityId === o.id) c.opportunityId = ''; });
       persist(); closeModal(); toast('Opportunité supprimée');
     };
+    $('#openPrep').onclick = () => { if (apply()){ persist(); openPrep(o.id); } };
     $('#addLinked').onclick = () => { if (apply()){ persist(); openContact(null, {opportunityId:o.id, company:o.company}); } };
     f.querySelectorAll('[data-oc]').forEach(el => el.onclick = () => { if (apply()){ persist(); openContact(el.dataset.oc); } });
   }
+}
+
+// Fiche de préparation d'entretien (V2) : stockée dans l'opportunité (o.prep)
+const PREP_FORMATS = ['Visio','Sur site','Téléphone','Autre'];
+const PREP_CHECK = ["Relire l'offre et mes notes", 'Relire la version du CV envoyée', 'Préparer mon pitch de 2 minutes', 'Préparer 3 questions à poser', 'Vérifier horaire, lieu ou lien visio', 'Envoyer un remerciement après'];
+function openPrep(id){
+  const o = db.opportunities.find(x => x.id === id); if (!o) return;
+  const p = {format:PREP_FORMATS[0], ...(o.prep || {})};
+  const items = (p.checklist && p.checklist.length ? p.checklist : PREP_CHECK.map(t => ({t, done:false}))).map(x => ({...x}));
+  const area = (name, label, ph, rows = 4) => fld(label, `<textarea name="${name}" rows="${rows}" placeholder="${esc(ph)}">${esc(p[name])}</textarea>`, 'full');
+  openModal(`<form id="pForm" autocomplete="off">
+    <div class="m-head"><h2>Entretien · ${esc(o.company)}</h2><button type="button" class="icon" data-close aria-label="Fermer">×</button></div>
+    <div class="prep-ctx"><strong>${esc(o.role)}</strong> · CV envoyé : <strong>${esc(o.cvVersion || 'non renseigné')}</strong>${safeUrl(o.url) ? ` · <a href="${esc(o.url)}" target="_blank" rel="noopener">Offre ↗</a>` : ''}
+      ${o.notes ? `<div class="notes">${esc(o.notes)}</div>` : ''}</div>
+    <div class="g2">
+      ${fld("Date de l'entretien", `<input type="date" name="date" value="${esc(p.date)}">`)}
+      ${fld('Format', sel('format', PREP_FORMATS, p.format))}
+      ${fld('Interlocuteurs', `<input name="who" placeholder="ex : RH + responsable R&D" value="${esc(p.who)}">`, 'full')}
+      ${area('pitch', 'Mon pitch (2 minutes)', 'Qui je suis, ce que je sais faire, pourquoi cette entreprise.')}
+      ${area('research', "Ce que j'ai appris sur l'entreprise", 'Produits, clients, actualité, concurrents, valeurs…')}
+      ${area('strengths', 'Mes points forts à placer (avec exemples)', 'Une situation concrète par point : contexte, action, résultat.')}
+      ${area('qa', 'Questions probables et mes réponses', 'Parcours, motivation, point faible, prétentions salariales, questions techniques…', 5)}
+      ${area('ask', 'Questions à poser', "Équipe, projets, évolution, suite du process, calendrier…")}
+    </div>
+    <div class="prep-sec">Checklist</div><div id="checks"></div>
+    <div class="ck-add"><input id="ckNew" placeholder="Ajouter une étape…"><button type="button" class="btn small" id="ckAdd">Ajouter</button></div>
+    <div class="g2">${area('debrief', "Après l'entretien", 'Ressenti, questions piégeuses, prochaines étapes, à qui relancer et quand.')}</div>
+    <div class="m-foot"><button type="button" class="btn" id="pBack">← Opportunité</button><span class="spacer"></span>
+      <button type="button" class="btn" data-close>Annuler</button><button class="btn primary" type="submit">Enregistrer</button></div>
+  </form>`);
+  const f = $('#pForm'), box = $('#checks');
+  const draw = () => { box.innerHTML = items.map((it, i) => `<div class="ck"><label class="check"><input type="checkbox" data-ci="${i}" ${it.done ? 'checked' : ''}><span class="${it.done ? 'done' : ''}">${esc(it.t)}</span></label><button type="button" class="icon" data-cdel="${i}" aria-label="Retirer">×</button></div>`).join(''); };
+  const add = () => { const inp = $('#ckNew'), t = inp.value.trim(); if (!t) return; items.push({t, done:false}); inp.value = ''; draw(); inp.focus(); };
+  draw();
+  box.onchange = e => { const i = e.target.dataset.ci; if (i !== undefined){ items[i].done = e.target.checked; draw(); } };
+  box.onclick = e => { const b = e.target.closest('[data-cdel]'); if (b){ items.splice(+b.dataset.cdel, 1); draw(); } };
+  $('#ckAdd').onclick = add;
+  $('#ckNew').onkeydown = e => { if (e.key === 'Enter'){ e.preventDefault(); add(); } };
+  $('#pBack').onclick = () => openOpp(o.id);
+  f.onsubmit = e => { e.preventDefault(); o.prep = {...formData(f), checklist:items}; persist(); closeModal(); toast("Fiche d'entretien enregistrée"); };
 }
 
 function openContact(id, preset = {}){
@@ -602,7 +704,7 @@ function render(){
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
   $('#weekLabel').textContent = `Semaine du ${fmt(weekStart())} · ${new Date().toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'})}`;
   renderStorage();
-  $('#view').innerHTML = view === 'kanban' ? kanbanHTML() : view === 'list' ? listHTML() : view === 'contacts' ? contactsHTML() : dashHTML();
+  $('#view').innerHTML = view === 'kanban' ? kanbanHTML() : view === 'list' ? listHTML() : view === 'contacts' ? contactsHTML() : view === 'stats' ? statsHTML() : dashHTML();
 }
 function menuHTML(){
   let h = '';
@@ -668,6 +770,7 @@ V.addEventListener('click', e => {
     }
     return;
   }
+  const p = e.target.closest('[data-open-prep]'); if (p) return openPrep(p.dataset.openPrep);
   const o = e.target.closest('[data-open-opp]'); if (o) return openOpp(o.dataset.openOpp);
   const c = e.target.closest('[data-open-contact]'); if (c) return openContact(c.dataset.openContact);
 });
