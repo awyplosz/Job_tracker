@@ -200,6 +200,13 @@ const SECTORS = {
   'Environnement / Océan':    '#0d9488',
   'Autre':                    '#64748b',
 };
+// Piste = quel profil tu mets en avant (différent du secteur de l'entreprise)
+const TRACKS = [
+  {id:'neural',    label:'Neural / Bioélectronique', color:'#db2777'},
+  {id:'materials', label:'Matériaux',                color:'#7c3aed'},
+  {id:'embedded',  label:'Embarqué',                 color:'#0891b2'},
+];
+const COUNTRIES = ['France','Suisse','Belgique','Allemagne','Pays-Bas','Royaume-Uni','Irlande','Espagne','Italie','Danemark','Suède','Canada','États-Unis'];
 const SOURCES = ['LinkedIn','Site entreprise','Réseau / Cooptation','Welcome to the Jungle','APEC','Candidature spontanée','Salon / Événement','Autre'];
 const LS_KEY = 'jobtracker-v1';
 const STALE_DAYS = 21; // au-delà, une candidature sans nouvelles remonte dans "À faire"
@@ -220,6 +227,9 @@ const inWeek = s => !!s && s >= weekStart() && s <= today();
 const fmt = s => s ? new Date(s + 'T00:00:00').toLocaleDateString('fr-FR', {day:'numeric', month:'short'}) : '';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const safeUrl = u => /^https?:\/\//i.test(u || '') ? u : '';
+const trackOf = id => TRACKS.find(t => t.id === id) || null;
+const countries = () => [...new Set([...db.opportunities.map(o => (o.country || '').trim()).filter(Boolean), ...COUNTRIES])].sort((a, b) => a.localeCompare(b, 'fr'));
+const usedCountries = () => [...new Set(db.opportunities.map(o => (o.country || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
 const stageOf = id => STAGES.find(s => s.id === id) || STAGES[0];
 const isClosed = o => ['offre','refus','silence'].includes(o.stage);
 const hadInterview = o => ['entretien','offre'].includes(o.stage) || (o.history || []).some(h => h.stage === 'entretien');
@@ -241,6 +251,8 @@ function dueBadge(date){
 }
 function ago(date){ const d = daysFrom(date); if (d === null) return 'jamais'; return d === 0 ? "aujourd'hui" : `il y a ${-d} j`; }
 function sectorChip(s){ const c = SECTORS[s] || '#64748b'; return s ? `<span class="chip" style="background:${c}22;color:${c}">${esc(s)}</span>` : ''; }
+function trackChip(id){ const t = trackOf(id); return t ? `<span class="chip" style="background:${t.color}22;color:${t.color}">${esc(t.label)}</span>` : ''; }
+const countryChip = c => c ? `<span class="chip cv-chip" title="Pays">📍 ${esc(c)}</span>` : '';
 function avatar(c){
   const ini = (c.name || '?').split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
   let h = 0; for (const ch of c.name || '') h = (h * 31 + ch.charCodeAt(0)) % 360;
@@ -275,7 +287,7 @@ function saveLocal(){ try { localStorage.setItem(LS_KEY, JSON.stringify(db)); } 
 let db = loadLocal();
 let view = (() => { try { return localStorage.getItem('jt-view') || 'dash'; } catch(e){ return 'dash'; } })();
 let fileHandle = null, pendingHandle = null, fileState = 'none', lastWrite = 0, saveTimer = null;
-let listFilter = {q:'', sector:'', stage:''}, contactQ = '';
+let listFilter = {q:'', sector:'', track:'', country:'', stage:''}, contactQ = '';
 const FS_OK = 'showOpenFilePicker' in window;
 
 // Mode Firefox / Safari (pas d'accès direct aux fichiers) :
@@ -360,9 +372,9 @@ window.addEventListener('focus', syncFromFile);
 
 function exportJSON(){ download(JSON.stringify(db, null, 2), `jobtracker-sauvegarde-${today()}.json`, 'application/json'); }
 function exportCSV(){
-  const cols = [['company','Entreprise'],['role','Poste'],['sector','Secteur'],['source','Source'],['cvVersion','Version CV'],['stage','Étape'],['appliedAt','Candidature'],['nextAction','Prochaine action'],['nextActionDate','Date action'],['url','Lien'],['notes','Notes']];
+  const cols = [['company','Entreprise'],['role','Poste'],['sector','Secteur'],['track','Piste'],['country','Pays'],['source','Source'],['cvVersion','Version CV'],['stage','Étape'],['appliedAt','Candidature'],['nextAction','Prochaine action'],['nextActionDate','Date action'],['url','Lien'],['notes','Notes']];
   const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const lines = [cols.map(c => q(c[1])).join(';'), ...db.opportunities.map(o => cols.map(([k]) => q(k === 'stage' ? stageOf(o.stage).label : o[k])).join(';'))];
+  const lines = [cols.map(c => q(c[1])).join(';'), ...db.opportunities.map(o => cols.map(([k]) => q(k === 'stage' ? stageOf(o.stage).label : k === 'track' ? trackOf(o.track)?.label : o[k])).join(';'))];
   download('\ufeff' + lines.join('\r\n'), `opportunites-${today()}.csv`, 'text/csv;charset=utf-8'); // ; + BOM = Excel FR lit bien les accents
 }
 
@@ -399,9 +411,9 @@ function todos(){
 }
 function loadDemo(){
   const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return iso(x); };
-  const o1 = {id:uid(), company:'NeuroFlex (exemple)', role:'Ingénieur R&D implants neuronaux', sector:'Biomédical', source:'LinkedIn', cvVersion:'CV Biomédical v1', stage:'candidate', appliedAt:d(-5), nextAction:'Relancer la RH par mail', nextActionDate:d(0), url:'', notes:'Exemple fictif : supprime-le quand tu veux.', createdAt:d(-8), history:[{stage:'candidate', date:d(-5)}]};
-  const o2 = {id:uid(), company:'Polymat Labs (exemple)', role:'Ingénieur matériaux polymères', sector:'Matériaux / Électronique', source:'Réseau / Cooptation', cvVersion:'CV Matériaux v2', stage:'entretien', appliedAt:d(-12), prep:{date:d(2), format:'Visio', who:'Responsable labo', checklist:[{t:"Relire l'offre et mes notes", done:true}, {t:'Préparer mon pitch de 2 minutes', done:false}]}, nextAction:"Préparer l'entretien technique", nextActionDate:d(2), url:'', notes:'', createdAt:d(-15), history:[{stage:'entretien', date:d(-3)}]};
-  const o3 = {id:uid(), company:'OceanSense (exemple)', role:'Ingénieur capteurs embarqués', sector:'Environnement / Océan', source:'Site entreprise', stage:'repere', nextAction:'Trouver un contact interne', nextActionDate:d(-1), url:'', notes:'', createdAt:d(-1), history:[]};
+  const o1 = {id:uid(), company:'NeuroFlex (exemple)', role:'Ingénieur R&D implants neuronaux', sector:'Biomédical', track:'neural', country:'Suisse', source:'LinkedIn', cvVersion:'CV Biomédical v1', stage:'candidate', appliedAt:d(-5), nextAction:'Relancer la RH par mail', nextActionDate:d(0), url:'', notes:'Exemple fictif : supprime-le quand tu veux.', createdAt:d(-8), history:[{stage:'candidate', date:d(-5)}]};
+  const o2 = {id:uid(), company:'Polymat Labs (exemple)', role:'Ingénieur matériaux polymères', sector:'Matériaux / Électronique', track:'materials', country:'France', source:'Réseau / Cooptation', cvVersion:'CV Matériaux v2', stage:'entretien', appliedAt:d(-12), prep:{date:d(2), format:'Visio', who:'Responsable labo', checklist:[{t:"Relire l'offre et mes notes", done:true}, {t:'Préparer mon pitch de 2 minutes', done:false}]}, nextAction:"Préparer l'entretien technique", nextActionDate:d(2), url:'', notes:'', createdAt:d(-15), history:[{stage:'entretien', date:d(-3)}]};
+  const o3 = {id:uid(), company:'OceanSense (exemple)', role:'Ingénieur capteurs embarqués', sector:'Environnement / Océan', track:'embedded', country:'France', source:'Site entreprise', stage:'repere', nextAction:'Trouver un contact interne', nextActionDate:d(-1), url:'', notes:'', createdAt:d(-1), history:[]};
   db.opportunities.push(o1, o2, o3);
   db.contacts.push(
     {id:uid(), name:'Claire Martin', company:'NeuroFlex (exemple)', role:'Ingénieure R&D', email:'', linkedin:'', opportunityId:o1.id, interactions:[d(-6)], nextFollowUp:d(3), notes:'Exemple fictif'},
@@ -469,7 +481,7 @@ function cardHTML(o){
   const nc = db.contacts.filter(c => c.opportunityId === o.id).length;
   return `<article class="card" draggable="true" data-drag="${o.id}" data-open-opp="${o.id}" style="--c:${stageOf(o.stage).color}">
     <div class="co">${esc(o.company)}</div><div class="ro">${esc(o.role)}</div>
-    <div class="meta">${sectorChip(o.sector)}${isClosed(o) ? '' : dueBadge(o.nextActionDate)}${nc ? `<span class="chip" style="background:var(--surface2);color:var(--muted)">👤 ${nc}</span>` : ''}${o.cvVersion ? `<span class="chip cv-chip" title="Version du CV envoyée">📄 ${esc(o.cvVersion)}</span>` : ''}${hasPrep(o) ? `<span class="chip cv-chip" title="Fiche d'entretien">📝 ${esc(prepProgress(o) || 'fiche')}</span>` : ''}</div>
+    <div class="meta">${trackChip(o.track)}${sectorChip(o.sector)}${countryChip(o.country)}${isClosed(o) ? '' : dueBadge(o.nextActionDate)}${nc ? `<span class="chip" style="background:var(--surface2);color:var(--muted)">👤 ${nc}</span>` : ''}${o.cvVersion ? `<span class="chip cv-chip" title="Version du CV envoyée">📄 ${esc(o.cvVersion)}</span>` : ''}${hasPrep(o) ? `<span class="chip cv-chip" title="Fiche d'entretien">📝 ${esc(prepProgress(o) || 'fiche')}</span>` : ''}</div>
     ${o.nextAction && !isClosed(o) ? `<div class="na">→ ${esc(o.nextAction)}</div>` : ''}</article>`;
 }
 function kanbanHTML(){
@@ -483,19 +495,24 @@ function kanbanHTML(){
 function listHTML(){
   const so = Object.keys(SECTORS).map(s => `<option ${s === listFilter.sector ? 'selected' : ''}>${esc(s)}</option>`).join('');
   const st = STAGES.map(s => `<option value="${s.id}" ${s.id === listFilter.stage ? 'selected' : ''}>${s.label}</option>`).join('');
+  const tr = TRACKS.map(t => `<option value="${t.id}" ${t.id === listFilter.track ? 'selected' : ''}>${esc(t.label)}</option>`).join('');
+  const co = usedCountries().map(c => `<option ${c === listFilter.country ? 'selected' : ''}>${esc(c)}</option>`).join('');
   return `<div class="toolbar"><input id="q" placeholder="Rechercher une entreprise, un poste, une note…" value="${esc(listFilter.q)}">
     <select id="fSector"><option value="">Tous les secteurs</option>${so}</select>
+    <select id="fTrack"><option value="">Toutes les pistes</option>${tr}</select>
+    <select id="fCountry"><option value="">Tous les pays</option>${co}</select>
     <select id="fStage"><option value="">Toutes les étapes</option>${st}</select></div>
     <div class="panel tablewrap" id="listBody">${listBody()}</div>`;
 }
 function listBody(){
   const q = listFilter.q.toLowerCase();
   const rows = db.opportunities.filter(o =>
-    (!listFilter.sector || o.sector === listFilter.sector) && (!listFilter.stage || o.stage === listFilter.stage) &&
-    (!q || [o.company, o.role, o.notes, o.nextAction, o.cvVersion].join(' ').toLowerCase().includes(q))).sort(sortOpps);
+    (!listFilter.sector || o.sector === listFilter.sector) && (!listFilter.track || o.track === listFilter.track) &&
+    (!listFilter.country || (o.country || '').trim() === listFilter.country) && (!listFilter.stage || o.stage === listFilter.stage) &&
+    (!q || [o.company, o.role, o.notes, o.nextAction, o.cvVersion, o.country, trackOf(o.track)?.label].join(' ').toLowerCase().includes(q))).sort(sortOpps);
   if (!rows.length) return '<p class="muted" style="padding:12px">Aucun résultat.</p>';
-  return `<table><thead><tr><th>Entreprise</th><th>Poste</th><th>Secteur</th><th>Étape</th><th>Candidature</th><th>CV</th><th>Prochaine action</th><th></th></tr></thead><tbody>
-    ${rows.map(o => `<tr data-open-opp="${o.id}"><td><strong>${esc(o.company)}</strong></td><td>${esc(o.role)}</td><td>${sectorChip(o.sector)}</td>
+  return `<table><thead><tr><th>Entreprise</th><th>Poste</th><th>Piste</th><th>Secteur</th><th>Pays</th><th>Étape</th><th>Candidature</th><th>CV</th><th>Prochaine action</th><th></th></tr></thead><tbody>
+    ${rows.map(o => `<tr data-open-opp="${o.id}"><td><strong>${esc(o.company)}</strong></td><td>${esc(o.role)}</td><td>${trackChip(o.track) || '<span class="muted">–</span>'}</td><td>${sectorChip(o.sector)}</td><td>${o.country ? esc(o.country) : '<span class="muted">–</span>'}</td>
       <td><span class="pill" style="background:${stageOf(o.stage).color}">${stageOf(o.stage).label}</span></td><td>${fmt(o.appliedAt) || '<span class="muted">–</span>'}</td>
       <td>${o.cvVersion ? esc(o.cvVersion) : '<span class="muted">–</span>'}</td>
       <td>${o.nextAction ? esc(o.nextAction) + ' ' : ''}${dueBadge(o.nextActionDate)}</td>
@@ -544,6 +561,9 @@ function statsHTML(){
   if (!ops.length) return `<div class="panel empty"><div class="big">📊</div><h2>Stats</h2><p class="muted">Ajoute des opportunités et des dates de candidature : tu verras ici où tombent tes réponses.</p></div>`;
   const group = (list, keyFn) => { const m = new Map(); list.forEach(o => { const k = keyFn(o); if (!m.has(k)) m.set(k, []); m.get(k).push(o); }); return m; };
   const sectorRows = Object.keys(SECTORS).filter(s => ops.some(o => o.sector === s)).map(s => ({...statRow(s, ops.filter(o => o.sector === s)), html:sectorChip(s)}));
+  const trackRows = [...TRACKS.filter(t => ops.some(o => o.track === t.id)).map(t => ({...statRow(t.label, ops.filter(o => o.track === t.id)), html:trackChip(t.id)})),
+    ...(ops.some(o => !trackOf(o.track)) ? [statRow('Non renseignée', ops.filter(o => !trackOf(o.track)))] : [])];
+  const countryRows = [...group(ops, o => (o.country || '').trim() || 'Non renseigné')].map(([k, v]) => statRow(k, v)).sort((a, b) => b.ap - a.ap || b.n - a.n);
   const cvRows = [...group(ops.filter(o => o.appliedAt), o => (o.cvVersion || '').trim() || 'Non renseignée')].map(([k, v]) => statRow(k, v)).sort((a, b) => b.ap - a.ap);
   const srcRows = [...group(ops, o => o.source || 'Autre')].map(([k, v]) => statRow(k, v)).sort((a, b) => b.n - a.n);
   const best = sectorRows.filter(r => r.ap >= 3 && r.rate !== null).sort((a, b) => b.rate - a.rate || b.ap - a.ap)[0];
@@ -551,6 +571,8 @@ function statsHTML(){
     : 'Il faut au moins 3 candidatures dans un secteur pour dégager une tendance.';
   return `<div class="stats"><div class="insight">${insight}</div>
     ${statTable('Par secteur', sectorRows, "Réponse = entretien, offre ou refus. Délai = jours entre la candidature et la première réponse.")}
+    ${statTable('Par piste', trackRows, 'Piste = le profil que tu mets en avant (neural, matériaux, embarqué).')}
+    ${statTable('Par pays', countryRows)}
     ${statTable('Par version de CV envoyée', cvRows, 'Compare tes versions de CV : seules les candidatures envoyées comptent.')}
     ${statTable('Par source', srcRows)}</div>`;
 }
@@ -574,6 +596,8 @@ function openOpp(id, preset = {}){
       ${fld('Entreprise *', `<input name="company" required autofocus value="${esc(v.company)}">`)}
       ${fld('Poste *', `<input name="role" required value="${esc(v.role)}">`)}
       ${fld("Lien de l'offre", `<input name="url" type="url" placeholder="https://…" value="${esc(v.url)}">`, 'full')}
+      ${fld('Piste', `<select name="track"><option value="">— Non renseignée —</option>${TRACKS.map(t => `<option value="${t.id}" ${t.id === v.track ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</select>`)}
+      ${fld('Pays', `<input name="country" list="countryList" placeholder="ex : France" value="${esc(v.country)}"><datalist id="countryList">${countries().map(x => `<option value="${esc(x)}">`).join('')}</datalist>`)}
       ${fld('Secteur', sel('sector', Object.keys(SECTORS), v.sector))}
       ${fld('Source', sel('source', SOURCES, v.source))}
       ${fld('Étape', `<select name="stage">${STAGES.map(s => `<option value="${s.id}" ${s.id === v.stage ? 'selected' : ''}>${s.label}</option>`).join('')}</select>`)}
@@ -780,6 +804,8 @@ V.addEventListener('input', e => {
 });
 V.addEventListener('change', e => {
   if (e.target.id === 'fSector'){ listFilter.sector = e.target.value; $('#listBody').innerHTML = listBody(); }
+  if (e.target.id === 'fTrack'){ listFilter.track = e.target.value; $('#listBody').innerHTML = listBody(); }
+  if (e.target.id === 'fCountry'){ listFilter.country = e.target.value; $('#listBody').innerHTML = listBody(); }
   if (e.target.id === 'fStage'){ listFilter.stage = e.target.value; $('#listBody').innerHTML = listBody(); }
   if (e.target.dataset.setting){ db.settings[e.target.dataset.setting] = Math.max(1, parseInt(e.target.value) || 1); persist(); }
 });

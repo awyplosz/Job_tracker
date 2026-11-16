@@ -63,7 +63,7 @@ Vérifie avec `git status` avant chaque commit.
 ```json
 {
   "settings": { "weeklyApps": 5, "weeklyNetwork": 3 },
-  "opportunities": [{ "id", "company", "role", "url", "sector", "source", "stage",
+  "opportunities": [{ "id", "company", "role", "url", "sector", "track", "country", "source", "stage",
                       "cvVersion", "appliedAt", "nextAction", "nextActionDate", "notes", "history": [],
                       "prep": { "date", "format", "who", "pitch", "research", "strengths",
                                 "qa", "ask", "debrief", "checklist": [{ "t", "done" }] } }],
