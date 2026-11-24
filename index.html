@@ -117,11 +117,11 @@ tbody tr{cursor:pointer} tbody tr:hover{background:var(--surface2)}
 .modal{background:var(--surface);border-radius:18px;width:min(680px,100%);max-height:92vh;overflow:auto;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,.3)}
 .m-head{display:flex;align-items:center;margin-bottom:16px} .m-head h2{margin:0;font-size:18px;flex:1}
 .m-foot{display:flex;gap:8px;margin-top:20px;align-items:center}
-.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.g2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
 .full{grid-column:1/-1}
-@media(max-width:600px){.g2{grid-template-columns:1fr}}
+@media(max-width:600px){.g2{grid-template-columns:minmax(0,1fr)}}
 .f{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted);font-weight:500}
-.f input,.f select,.f textarea{font:inherit;font-size:14px;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:9px 11px}
+.f input,.f select,.f textarea{font:inherit;min-width:0;font-size:14px;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:9px 11px}
 .f input:focus,.f select:focus,.f textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
 .check{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text)}
 .linked{margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
@@ -226,6 +226,7 @@ function weekStart(){ const d = new Date(); d.setDate(d.getDate() - (d.getDay() 
 const inWeek = s => !!s && s >= weekStart() && s <= today();
 const fmt = s => s ? new Date(s + 'T00:00:00').toLocaleDateString('fr-FR', {day:'numeric', month:'short'}) : '';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const telHref = p => (p || '').replace(/[^\d+]/g, ''); // garde chiffres et +, pour un lien tel: sûr
 const safeUrl = u => /^https?:\/\//i.test(u || '') ? u : '';
 const trackOf = id => TRACKS.find(t => t.id === id) || null;
 const countries = () => [...new Set([...db.opportunities.map(o => (o.country || '').trim()).filter(Boolean), ...COUNTRIES])].sort((a, b) => a.localeCompare(b, 'fr'));
@@ -526,7 +527,7 @@ function contactsHTML(){
 }
 function contactsBody(){
   const q = contactQ.toLowerCase();
-  const cs = db.contacts.filter(c => !q || [c.name, c.company, c.role, c.notes].join(' ').toLowerCase().includes(q))
+  const cs = db.contacts.filter(c => !q || [c.name, c.company, c.role, c.notes, c.phone, c.email].join(' ').toLowerCase().includes(q))
     .sort((a, b) => (a.nextFollowUp || '9999').localeCompare(b.nextFollowUp || '9999') || (a.name || '').localeCompare(b.name || ''));
   if (!cs.length) return `<div class="panel empty"><div class="big">🤝</div><h2>Ton réseau</h2><p class="muted">Ajoute les personnes à contacter : alumni, ingénieurs en poste, anciens encadrants. Note chaque échange pour suivre ton objectif hebdo.</p><div class="row-c"><button class="btn primary" data-act="new-contact">+ Premier contact</button></div></div>`;
   return `<div class="cgrid">${cs.map(c => {
@@ -536,6 +537,7 @@ function contactsBody(){
       ${o ? `<div class="small">↳ ${esc(o.company)} · ${esc(o.role)}</div>` : ''}
       <div class="cf"><span class="muted small">Dernier échange : ${ago(lastInteraction(c))}</span><span class="spacer"></span>
         ${c.email ? `<a class="btn small" href="mailto:${esc(c.email)}">Mail</a>` : ''}
+        ${telHref(c.phone) ? `<a class="btn small" href="tel:${telHref(c.phone)}" title="${esc(c.phone)}">Appeler</a>` : ''}
         ${safeUrl(c.linkedin) ? `<a class="btn small" href="${esc(c.linkedin)}" target="_blank" rel="noopener">LinkedIn</a>` : ''}
         <button class="btn small" data-act="ping" data-id="${c.id}" title="Noter un échange aujourd'hui">+ Échange</button></div></div>`;
   }).join('')}</div>`;
@@ -687,7 +689,8 @@ function openContact(id, preset = {}){
       ${fld('Entreprise', `<input name="company" value="${esc(v.company)}">`)}
       ${fld('Rôle', `<input name="role" placeholder="ex : ingénieur R&D, alumni Mines" value="${esc(v.role)}">`)}
       ${fld('Email', `<input name="email" type="email" value="${esc(v.email)}">`)}
-      ${fld('Profil LinkedIn', `<input name="linkedin" type="url" placeholder="https://linkedin.com/in/…" value="${esc(v.linkedin)}">`, 'full')}
+      ${fld('Téléphone', `<input name="phone" type="tel" placeholder="ex : +33 6 12 34 56 78" value="${esc(v.phone)}">`)}
+      ${fld('Profil LinkedIn', `<input name="linkedin" type="url" placeholder="https://linkedin.com/in/…" value="${esc(v.linkedin)}">`)}
       ${fld('Opportunité liée', `<select name="opportunityId">${oppOpts}</select>`)}
       ${fld('Prochaine relance', `<input type="date" name="nextFollowUp" value="${esc(v.nextFollowUp)}">`)}
       ${fld('Notes', `<textarea name="notes" rows="3" placeholder="Comment vous vous êtes connus, sujets abordés…">${esc(v.notes)}</textarea>`, 'full')}
