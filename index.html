@@ -271,13 +271,18 @@ function download(content, name, type){
    1) localStorage = copie de travail dans le navigateur (toujours)
    2) fichier JSON lié (Chrome/Edge) = vraie sauvegarde, idéalement dans un dossier cloud
    3) export/import manuel = filet de sécurité
+   Fusion entre ordinateurs : chaque fiche porte sa date de modification (updatedAt)
+   et chaque suppression laisse une « pierre tombale » (deleted[id] = date).
+   Quand deux versions se rencontrent, on garde pour chaque fiche la plus récente,
+   et une fiche supprimée après sa dernière modification reste supprimée.
    ===================================================================== */
-const blank = () => ({version:1, settings:{weeklyApps:5, weeklyNetwork:3}, opportunities:[], contacts:[]});
+const blank = () => ({version:1, settings:{weeklyApps:5, weeklyNetwork:3}, settingsUpdatedAt:'', opportunities:[], contacts:[], deleted:{}});
 function normalize(d){
   d = d && typeof d === 'object' ? d : {};
   return {
     version: 1, updatedAt: d.updatedAt || null,
-    settings: {...blank().settings, ...(d.settings || {})},
+    settings: {...blank().settings, ...(d.settings || {})}, settingsUpdatedAt: d.settingsUpdatedAt || '',
+    deleted: d.deleted && typeof d.deleted === 'object' && !Array.isArray(d.deleted) ? {...d.deleted} : {},
     opportunities: Array.isArray(d.opportunities) ? d.opportunities.map(o => ({history:[], ...o})) : [],
     contacts: Array.isArray(d.contacts) ? d.contacts.map(c => ({interactions:[], ...c})) : [],
   };
@@ -285,7 +290,68 @@ function normalize(d){
 function loadLocal(){ try { return normalize(JSON.parse(localStorage.getItem(LS_KEY))); } catch(e){ return blank(); } }
 function saveLocal(){ try { localStorage.setItem(LS_KEY, JSON.stringify(db)); } catch(e){} }
 
-let db = loadLocal();
+// JSON à clés triées : deux fiches identiques donnent toujours le même texte, quel que soit l'ordre des champs
+const canon = x => JSON.stringify(x, (k, v) => v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : v);
+const bare = r => { const {updatedAt, ...rest} = r; return canon(rest); };
+const records = d => [...d.opportunities, ...d.contacts];
+const fingerprint = d => canon([d.settings, records(d).slice().sort((a, b) => a.id < b.id ? -1 : 1), d.deleted]);
+
+// Fusion de deux versions des données : a = navigateur, b = fichier.
+// Les objets de a sont mis à jour sur place, pour qu'une fenêtre ouverte continue de pointer sur la bonne fiche.
+function mergeDocs(a, b){
+  const ts = r => r.updatedAt || r.createdAt || ''; // fiches d'avant la fusion : date de création
+  const bNewer = (b.updatedAt || '') > (a.updatedAt || ''); // départage les égalités
+  const deleted = {...a.deleted};
+  for (const [id, t] of Object.entries(b.deleted)) if (!deleted[id] || t > deleted[id]) deleted[id] = t;
+  const mergeList = key => {
+    const mb = new Map(b[key].map(r => [r.id, r])), out = [], seen = new Set();
+    for (const ra of a[key]){
+      seen.add(ra.id);
+      const rb = mb.get(ra.id);
+      if (rb && (ts(rb) > ts(ra) || (ts(rb) === ts(ra) && bNewer))){
+        for (const k of Object.keys(ra)) if (!(k in rb)) delete ra[k];
+        Object.assign(ra, rb);
+      }
+      out.push(ra);
+    }
+    for (const rb of b[key]) if (!seen.has(rb.id)) out.push(rb);
+    return out.filter(r => !(deleted[r.id] && deleted[r.id] >= ts(r)));
+  };
+  const sb = (b.settingsUpdatedAt || '') > (a.settingsUpdatedAt || '');
+  return {
+    version: 1, updatedAt: [a.updatedAt, b.updatedAt].filter(Boolean).sort().pop() || null,
+    settings: sb ? {...b.settings} : a.settings, settingsUpdatedAt: sb ? b.settingsUpdatedAt : a.settingsUpdatedAt,
+    opportunities: mergeList('opportunities'), contacts: mergeList('contacts'), deleted,
+  };
+}
+
+// Instantané de l'état enregistré : persist() le compare à l'état courant pour dater
+// les fiches modifiées et créer une pierre tombale pour chaque fiche disparue.
+let db = blank(), snap = new Map();
+function takeSnap(){ snap = new Map(records(db).map(r => [r.id, bare(r)])); snap.set('#settings', canon(db.settings)); }
+function setDb(d){ db = d; takeSnap(); }
+function stamp(){
+  const now = new Date().toISOString(), alive = new Set();
+  for (const r of records(db)){ alive.add(r.id); if (snap.get(r.id) !== bare(r)) r.updatedAt = now; delete db.deleted[r.id]; }
+  for (const id of snap.keys()) if (id !== '#settings' && !alive.has(id)) db.deleted[id] = now;
+  if (snap.get('#settings') !== canon(db.settings)) db.settingsUpdatedAt = now;
+  takeSnap(); return now;
+}
+// Fusionne un document (fichier) dans les données du navigateur et dit ce qui a changé
+function absorb(file){
+  const before = new Map(records(db).map(r => [r.id, canon(r)])), fpBefore = fingerprint(db);
+  const merged = mergeDocs(db, file);
+  setDb(merged); saveLocal();
+  const after = new Map(records(merged).map(r => [r.id, canon(r)]));
+  const n = {added:0, updated:0, removed:0};
+  for (const [id, j] of after) before.has(id) ? (before.get(id) !== j && n.updated++) : n.added++;
+  for (const id of before.keys()) if (!after.has(id)) n.removed++;
+  const fp = fingerprint(merged);
+  return {...n, changedLocal: fp !== fpBefore, fileBehind: fp !== fingerprint(file)};
+}
+const mergeMsg = r => r.changedLocal ? 'Fusion : ' + [r.added && `${r.added} ajoutée(s)`, r.updated && `${r.updated} modifiée(s)`, r.removed && `${r.removed} supprimée(s)`].filter(Boolean).join(', ') : 'Rien de nouveau dans ce fichier';
+
+setDb(loadLocal());
 let view = (() => { try { return localStorage.getItem('jt-view') || 'dash'; } catch(e){ return 'dash'; } })();
 let fileHandle = null, pendingHandle = null, fileState = 'none', lastWrite = 0, saveTimer = null;
 let listFilter = {q:'', sector:'', track:'', country:'', stage:''}, contactQ = '';
@@ -309,20 +375,37 @@ function savedLabel(s){
   return iso(d) === today() ? `à ${h}` : `le ${fmt(iso(d))} à ${h}`;
 }
 
-// Toute modification passe par persist() : sauvegarde locale + fichier (différé) + rafraîchissement
+// Toute modification passe par persist() : datation des fiches, sauvegarde locale + fichier (différé) + rafraîchissement
 function persist(){
-  db.updatedAt = new Date().toISOString();
+  db.updatedAt = stamp();
   saveLocal();
-  clearTimeout(saveTimer); saveTimer = setTimeout(writeFile, 300);
+  clearTimeout(saveTimer); saveTimer = setTimeout(() => queueSync(true), 300);
   render();
 }
-async function writeFile(){
+// Synchronisation avec le fichier lié : relit le fichier s'il a changé ailleurs (autre ordinateur via le cloud),
+// fusionne, puis réécrit si le fichier n'est pas à jour. Les appels sont mis en file pour ne jamais se chevaucher.
+let syncChain = Promise.resolve();
+const queueSync = mustWrite => (syncChain = syncChain.then(() => syncFile(mustWrite)));
+async function syncFile(mustWrite){
   if (!fileHandle) return;
   try {
-    const w = await fileHandle.createWritable();
-    await w.write(JSON.stringify(db, null, 2)); await w.close();
-    lastWrite = Date.now(); fileState = 'ok';
-  } catch(e){ fileState = 'error'; console.error(e); toast("Impossible d'écrire dans le fichier"); }
+    const f = await fileHandle.getFile();
+    let write = mustWrite;
+    if (f.lastModified > lastWrite + 2000){
+      const txt = await f.text();
+      if (txt.trim()){
+        const r = absorb(normalize(JSON.parse(txt)));
+        write = write || r.fileBehind;
+        if (r.changedLocal){ render(); toast(mergeMsg(r).replace('Fusion', 'Fusion avec le fichier')); }
+      } else write = true;
+    }
+    if (write){
+      const w = await fileHandle.createWritable();
+      await w.write(JSON.stringify(db, null, 2)); await w.close();
+      lastWrite = (await fileHandle.getFile()).lastModified;
+    } else lastWrite = Math.max(lastWrite, f.lastModified);
+    fileState = 'ok';
+  } catch(e){ fileState = 'error'; console.error(e); toast(e instanceof SyntaxError ? 'Fichier de données illisible : rien n\'a été écrit' : "Impossible d'écrire dans le fichier"); }
   renderStorage();
 }
 
@@ -331,45 +414,35 @@ function idb(){ return new Promise((res, rej) => { const r = indexedDB.open('job
 async function idbSet(k, v){ const d = await idb(); return new Promise((res, rej) => { const t = d.transaction('kv', 'readwrite'); v === undefined ? t.objectStore('kv').delete(k) : t.objectStore('kv').put(v, k); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
 async function idbGet(k){ const d = await idb(); return new Promise((res, rej) => { const r = d.transaction('kv').objectStore('kv').get(k); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
 
-async function attach(h, readIt){
-  fileHandle = h; pendingHandle = null;
+// Lier un fichier : son contenu est FUSIONNÉ avec celui du navigateur (rien n'est écrasé)
+async function attach(h){
+  fileHandle = h; pendingHandle = null; lastWrite = 0;
   try { await idbSet('handle', h); } catch(e){}
-  if (readIt){
-    const f = await h.getFile(); const txt = await f.text();
-    if (txt.trim()){ db = normalize(JSON.parse(txt)); saveLocal(); lastWrite = f.lastModified; }
-    else await writeFile();
-  }
-  fileState = 'ok'; render();
+  await queueSync(false);
+  render();
 }
 async function createFile(){
   const h = await showSaveFilePicker({suggestedName:'jobtracker-data.json', types:[{description:'Données Job Tracker', accept:{'application/json':['.json']}}]});
-  fileHandle = h; try { await idbSet('handle', h); } catch(e){}
-  await writeFile(); render(); toast('Fichier créé : sauvegarde automatique active');
+  await attach(h); toast('Fichier prêt : sauvegarde automatique active');
 }
 async function linkFile(){
   const [h] = await showOpenFilePicker({types:[{description:'Données Job Tracker', accept:{'application/json':['.json']}}]});
-  if (db.opportunities.length && !confirm('Les données de ce fichier vont remplacer celles affichées. Continuer ?')) return;
-  await attach(h, true); toast('Fichier lié');
+  await attach(h);
 }
 async function reconnect(){
   if (!pendingHandle) return;
-  if (await pendingHandle.requestPermission({mode:'readwrite'}) === 'granted'){ await attach(pendingHandle, true); toast('Fichier reconnecté'); }
+  if (await pendingHandle.requestPermission({mode:'readwrite'}) === 'granted'){ await attach(pendingHandle); }
 }
-// Quand tu reviens sur l'onglet, on relit le fichier s'il a été modifié ailleurs (autre ordi via le cloud)
-async function syncFromFile(){
-  if (!fileHandle) return;
-  try {
-    const f = await fileHandle.getFile();
-    if (f.lastModified > lastWrite + 2000){
-      const txt = await f.text();
-      if (txt.trim() && txt !== JSON.stringify(db, null, 2)){
-        db = normalize(JSON.parse(txt)); saveLocal(); render(); toast('Données mises à jour depuis le fichier');
-      }
-      lastWrite = f.lastModified;
-    }
-  } catch(e){}
+// Quand tu reviens sur l'onglet, on relit le fichier s'il a été modifié ailleurs
+window.addEventListener('focus', () => queueSync(false));
+
+// Restaurer une sauvegarde = elle devient la référence, y compris sur les autres ordinateurs :
+// les fiches absentes de la sauvegarde sont supprimées, celles qui diffèrent sont redatées.
+function restoreDoc(file){
+  if (hasData()) download(JSON.stringify(db, null, 2), `jobtracker-avant-restauration-${today()}.json`, 'application/json');
+  db = {...file, deleted:{...db.deleted, ...file.deleted}}; // l'instantané reste celui d'avant : persist() calcule la différence
+  persist();
 }
-window.addEventListener('focus', syncFromFile);
 
 function exportJSON(){ download(JSON.stringify(db, null, 2), `jobtracker-sauvegarde-${today()}.json`, 'application/json'); }
 function exportCSV(){
@@ -619,6 +692,8 @@ function openOpp(id, preset = {}){
   const apply = () => {
     if (!f.reportValidity()) return null;
     const d = formData(f);
+    // si une synchro a supprimé la fiche pendant que la fenêtre était ouverte, ta modification (plus récente) la recrée
+    if (o && !db.opportunities.includes(o)) db.opportunities.push(o);
     if (o){ const prev = o.stage; Object.assign(o, d, {stage:prev}); if (d.stage !== prev) setStage(o, d.stage); return o; }
     const n = {id:uid(), createdAt:today(), history:[], ...d, stage:'repere'};
     setStage(n, d.stage); db.opportunities.push(n); return n;
@@ -674,7 +749,7 @@ function openPrep(id){
   $('#ckAdd').onclick = add;
   $('#ckNew').onkeydown = e => { if (e.key === 'Enter'){ e.preventDefault(); add(); } };
   $('#pBack').onclick = () => openOpp(o.id);
-  f.onsubmit = e => { e.preventDefault(); o.prep = {...formData(f), checklist:items}; persist(); closeModal(); toast("Fiche d'entretien enregistrée"); };
+  f.onsubmit = e => { e.preventDefault(); if (!db.opportunities.includes(o)) db.opportunities.push(o); o.prep = {...formData(f), checklist:items}; persist(); closeModal(); toast("Fiche d'entretien enregistrée"); };
 }
 
 function openContact(id, preset = {}){
@@ -707,7 +782,7 @@ function openContact(id, preset = {}){
     const t = c || {id:uid(), createdAt:today(), interactions:[]};
     Object.assign(t, d);
     if (ping && !t.interactions.includes(today())) t.interactions.push(today());
-    if (!c) db.contacts.push(t);
+    if (!db.contacts.includes(t)) db.contacts.push(t);
     persist(); closeModal(); toast(c ? 'Contact mis à jour' : 'Contact ajouté');
   };
   if (c) $('#delC').onclick = () => { if (confirm(`Supprimer ${c.name} ?`)){ db.contacts = db.contacts.filter(x => x !== c); persist(); closeModal(); toast('Contact supprimé'); } };
@@ -737,14 +812,15 @@ function menuHTML(){
   let h = '';
   if (FS_OK){
     if (pendingHandle) h += `<button data-menu="reconnect">🔄 Reconnecter « ${esc(pendingHandle.name)} »</button>`;
-    h += `<button data-menu="create">📄 Créer un fichier de données…</button><button data-menu="link">📂 Ouvrir un fichier existant…</button>`;
+    h += `<button data-menu="create">📄 Créer un fichier de données…</button><button data-menu="link">📂 Lier un fichier existant (fusion)…</button>`;
     if (fileHandle) h += `<button data-menu="unlink">Délier le fichier</button>`;
     h += `<div class="hint">Place le fichier dans ton dossier OneDrive, Drive ou Dropbox pour le retrouver sur un autre ordinateur.</div>`;
   } else {
-    h += `<button data-menu="save">💾 Sauvegarder maintenant (Ctrl+S)</button><button data-menu="import">📂 Ouvrir un fichier de données…</button>
+    h += `<button data-menu="save">💾 Sauvegarder maintenant (Ctrl+S)</button><button data-menu="import">📂 Ouvrir un fichier de données (fusion)…</button>
       <div class="hint">Enregistre <b>jobtracker-data.json</b> dans ton dossier OneDrive, Drive ou Dropbox en remplaçant l'ancien. Sur un autre ordinateur, ouvre ce même fichier.</div>`;
   }
-  return h + `<hr><button data-menu="export">⬇️ Exporter une copie datée (JSON)</button>${FS_OK ? '<button data-menu="import">⬆️ Importer une sauvegarde…</button>' : ''}
+  return h + `<hr><button data-menu="export">⬇️ Exporter une copie datée (JSON)</button>${FS_OK ? '<button data-menu="import">🔀 Fusionner un fichier JSON…</button>' : ''}
+    <button data-menu="restore">⏪ Restaurer une sauvegarde (remplace tout)…</button>
     <button data-menu="csv">📊 Exporter en CSV (Excel)</button><hr><button data-menu="wipe" class="danger">Tout effacer…</button>`;
 }
 function toggleMenu(force){ const m = $('#menu'); const open = force ?? m.classList.contains('hidden'); if (open) m.innerHTML = menuHTML(); m.classList.toggle('hidden', !open); }
@@ -765,19 +841,29 @@ $('#menu').onclick = async e => {
       case 'save': saveDownload(); break;
       case 'export': exportJSON(); break;
       case 'csv': exportCSV(); break;
-      case 'import': $('#importInput').click(); break;
-      case 'wipe': if (confirm('Effacer TOUTES les données ? Exporte une sauvegarde avant si besoin.')){ db = blank(); persist(); toast('Données effacées'); } break;
+      case 'import': importMode = 'merge'; $('#importInput').click(); break;
+      case 'restore': importMode = 'restore'; $('#importInput').click(); break;
+      case 'wipe': if (confirm('Effacer TOUTES les données ?\nElles seront aussi supprimées sur tes autres ordinateurs à la prochaine synchronisation. Exporte une sauvegarde avant si besoin.')){ db = {...blank(), deleted:db.deleted}; persist(); toast('Données effacées'); } break;
     }
   } catch(err){ if (err.name !== 'AbortError'){ console.error(err); toast('Opération impossible : ' + err.message); } }
 };
+let importMode = 'merge';
 $('#importInput').onchange = async e => {
   const file = e.target.files[0]; e.target.value = ''; if (!file) return;
-  try {
-    const data = normalize(JSON.parse(await file.text()));
-    if (!confirm(`Importer ${data.opportunities.length} opportunité(s) et ${data.contacts.length} contact(s) ? Les données actuelles seront remplacées.`)) return;
-    db = data; persist(); toast('Import réussi');
-    if (!FS_OK) markSaved(); // le fichier ouvert correspond exactement aux données affichées
-  } catch(err){ toast("Fichier invalide : ce n'est pas une sauvegarde Job Tracker"); }
+  let data;
+  try { data = normalize(JSON.parse(await file.text())); } catch(err){ return toast("Fichier invalide : ce n'est pas une sauvegarde Job Tracker"); }
+  if (importMode === 'restore'){
+    if (!confirm(`Restaurer cette sauvegarde (${data.opportunities.length} opportunité(s), ${data.contacts.length} contact(s)) ?\nTout ce qui n'y figure pas sera supprimé, ici et sur tes autres ordinateurs. Une copie des données actuelles sera téléchargée avant.`)) return;
+    restoreDoc(data); toast('Sauvegarde restaurée');
+    return;
+  }
+  const r = absorb(data);
+  if (fileHandle) queueSync(r.fileBehind);
+  if (!FS_OK){
+    if (r.fileBehind){ db.updatedAt = new Date().toISOString(); saveLocal(); } // le navigateur contient plus que le fichier : à sauvegarder
+    else markSaved(); // le fichier ouvert correspond exactement aux données affichées
+  }
+  render(); toast(mergeMsg(r) + (!FS_OK && r.fileBehind ? ' · Ctrl+S pour mettre le fichier à jour' : ''));
 };
 
 // Délégation d'événements : un seul écouteur pour tous les éléments de la vue
@@ -827,7 +913,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape'){ closeModal(); toggleMenu(false); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's'){ // Ctrl+S = sauvegarder
     e.preventDefault();
-    if (fileHandle){ writeFile(); toast('Enregistré'); } else saveDownload();
+    if (fileHandle){ queueSync(true); toast('Enregistré'); } else saveDownload();
     return;
   }
   const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName);
@@ -845,7 +931,7 @@ window.addEventListener('beforeunload', e => { if (unsaved()){ e.preventDefault(
   if (!FS_OK) return;
   try {
     const h = await idbGet('handle'); if (!h) return;
-    if (await h.queryPermission({mode:'readwrite'}) === 'granted') await attach(h, true);
+    if (await h.queryPermission({mode:'readwrite'}) === 'granted') await attach(h);
     else { pendingHandle = h; renderStorage(); }
   } catch(e){ console.warn(e); }
 })();
